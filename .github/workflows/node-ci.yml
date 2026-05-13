@@ -1,0 +1,113 @@
+name: Node CI (reusable)
+
+# Generic lint + typecheck + test workflow for Node projects. Detects the
+# package manager from the lockfile (npm / pnpm / yarn) and runs the
+# corresponding install. Each step is opt-out via inputs so a TS-only repo
+# can skip the test step, etc.
+#
+# Designed for the common case: single package.json at the repo root. For
+# monorepos, run this reusable workflow once per workspace from the caller.
+
+on:
+  workflow_call:
+    inputs:
+      node-versions:
+        description: 'JSON array of Node versions to test against, e.g. `["20","22"]`.'
+        type: string
+        default: '["22"]'
+      os-matrix:
+        description: 'JSON array of OS runners, e.g. `["ubuntu-latest"]` or `["ubuntu-latest","windows-latest","macos-latest"]`.'
+        type: string
+        default: '["ubuntu-latest"]'
+      working-directory:
+        description: "Subdirectory to run in. Useful for monorepo packages."
+        type: string
+        default: "."
+      lint-script:
+        description: "package.json script for lint. Empty string = skip."
+        type: string
+        default: "lint"
+      typecheck-script:
+        description: "package.json script for typecheck. Empty string = skip."
+        type: string
+        default: "typecheck"
+      test-script:
+        description: "package.json script for test. Empty string = skip."
+        type: string
+        default: "test"
+      build-script:
+        description: "package.json script for build. Empty string = skip."
+        type: string
+        default: ""
+      install-command:
+        description: "Override the install command. Empty = auto-detect from lockfile."
+        type: string
+        default: ""
+      cache:
+        description: "actions/setup-node cache: npm, pnpm, yarn, or empty to disable."
+        type: string
+        default: "npm"
+
+jobs:
+  ci:
+    name: ${{ matrix.os }} / node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ${{ fromJSON(inputs.node-versions) }}
+        os: ${{ fromJSON(inputs.os-matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: ${{ inputs.cache }}
+
+      - name: Detect package manager
+        id: pm
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.install-command }}" ]; then
+            echo "install=${{ inputs.install-command }}" >> "$GITHUB_OUTPUT"
+            echo "run=npm run --if-present" >> "$GITHUB_OUTPUT"
+          elif [ -f pnpm-lock.yaml ]; then
+            npm install -g pnpm
+            echo "install=pnpm install --frozen-lockfile" >> "$GITHUB_OUTPUT"
+            echo "run=pnpm run --if-present" >> "$GITHUB_OUTPUT"
+          elif [ -f yarn.lock ]; then
+            echo "install=yarn install --frozen-lockfile" >> "$GITHUB_OUTPUT"
+            echo "run=yarn run" >> "$GITHUB_OUTPUT"
+          else
+            echo "install=npm ci" >> "$GITHUB_OUTPUT"
+            echo "run=npm run --if-present" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install
+        shell: bash
+        run: ${{ steps.pm.outputs.install }}
+
+      - name: Lint
+        if: inputs.lint-script != ''
+        shell: bash
+        run: ${{ steps.pm.outputs.run }} ${{ inputs.lint-script }}
+
+      - name: Typecheck
+        if: inputs.typecheck-script != ''
+        shell: bash
+        run: ${{ steps.pm.outputs.run }} ${{ inputs.typecheck-script }}
+
+      - name: Test
+        if: inputs.test-script != ''
+        shell: bash
+        run: ${{ steps.pm.outputs.run }} ${{ inputs.test-script }}
+
+      - name: Build
+        if: inputs.build-script != ''
+        shell: bash
+        run: ${{ steps.pm.outputs.run }} ${{ inputs.build-script }}

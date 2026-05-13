@@ -76,6 +76,12 @@ const LABELS = [
   { name: 'priority:p2', color: 'FBCA04', description: 'Normal' },
   { name: 'priority:p3', color: 'C5DEF5', description: 'Nice to have' },
 
+  // Effort (from the `open` skill — drives triage and PRD breakdown)
+  { name: 'effort:s', color: 'C2E0C6', description: '< 1 hour' },
+  { name: 'effort:m', color: 'BFE5BF', description: '~ half day' },
+  { name: 'effort:l', color: 'FBCA04', description: '1–2 days' },
+  { name: 'effort:xl', color: 'D93F0B', description: 'Multi-day' },
+
   // Status
   { name: 'wip', color: 'FEF2C0', description: 'Work in progress; not ready for review' },
   { name: 'blocked', color: 'E11D21', description: 'Blocked on external dependency' },
@@ -88,6 +94,11 @@ const LABELS = [
   { name: 'anomaly', color: 'B60205', description: 'Auto-promoted from .anomalies/ file on merge' },
   { name: 'ignore-for-release', color: 'EDEDED', description: 'Exclude from auto-generated release notes' },
   { name: 'auto-merge', color: '0E8A16', description: 'Eligible for auto-merge once CI is green' },
+
+  // PRD / breakdown (from the `open` skill)
+  { name: 'prd', color: '5319E7', description: 'Parent PRD issue — broken into tracer-bullet sub-issues' },
+  { name: 'tracer-bullet', color: 'BFD4F2', description: 'Thin vertical slice cutting through all layers' },
+  { name: 'needs-triage', color: 'FEF2C0', description: 'Not yet triaged into a bucket' },
 ];
 
 // --- gh wrapper ------------------------------------------------------------

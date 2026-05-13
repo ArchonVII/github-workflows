@@ -1,0 +1,73 @@
+name: Branch Naming (reusable)
+
+# Enforces a branch-name convention on PRs. Default matches the `open` skill:
+#
+#   agent/<tool>/<issue>-<slug>          (issue-driven work)
+#   agent/<tool>/<YYYY-MM-DD>-<slug>     (quick-fix work, no issue)
+#   <type>/<slug>                        (conventional-commits-style)
+#   copilot/<anything>                   (GitHub Copilot SWE agent branches)
+#   dependabot/<anything>                (Dependabot)
+#
+# Override via the `pattern` input to suit a different convention. Set
+# `enforce` to false to make this advisory (warn-only).
+
+on:
+  workflow_call:
+    inputs:
+      pattern:
+        description: "JS regex (without delimiters) the PR head branch must match."
+        type: string
+        default: '^(agent/[a-z0-9-]+/(\d+|\d{4}-\d{2}-\d{2})-[a-z0-9-]+|(feat|fix|refactor|test|docs|style|chore|perf|ci|build|revert)/[a-z0-9-]+|copilot/.+|dependabot/.+)$'
+      enforce:
+        description: "Fail the check on mismatch. Set false for warn-only."
+        type: boolean
+        default: true
+      exempt-authors:
+        description: "Comma-separated GitHub logins exempt from the check."
+        type: string
+        default: "dependabot[bot]"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          BRANCH_PATTERN: ${{ inputs.pattern }}
+          ENFORCE: ${{ inputs.enforce }}
+          EXEMPT: ${{ inputs.exempt-authors }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const branch = pr.head.ref;
+            const exempt = process.env.EXEMPT.split(',').map((s) => s.trim()).filter(Boolean);
+
+            if (exempt.includes(pr.user.login)) {
+              core.info(`PR author ${pr.user.login} is exempt; skipping branch-name check.`);
+              return;
+            }
+
+            const re = new RegExp(process.env.BRANCH_PATTERN);
+            if (re.test(branch)) {
+              core.info(`Branch \`${branch}\` matches convention.`);
+              return;
+            }
+
+            const msg = [
+              `Branch \`${branch}\` does not match the expected naming convention.`,
+              '',
+              'Examples that match:',
+              '  agent/claude/1234-my-feature       (issue-driven)',
+              '  agent/codex/2026-05-13-quick-fix   (quick-fix, no issue)',
+              '  feat/oauth-device-flow             (conventional-commits style)',
+              '',
+              `Pattern: \`${process.env.BRANCH_PATTERN}\``,
+            ].join('\n');
+
+            if (process.env.ENFORCE === 'true') {
+              core.setFailed(msg);
+            } else {
+              core.warning(msg);
+            }

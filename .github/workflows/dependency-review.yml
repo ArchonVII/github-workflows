@@ -1,0 +1,45 @@
+name: Dependency Review (reusable)
+
+# Blocks PRs that introduce vulnerable or copyleft-licensed dependencies.
+# Uses GitHub's first-party `actions/dependency-review-action`. No build is
+# needed — operates on the lockfile diff. Only runs on PR events.
+
+on:
+  workflow_call:
+    inputs:
+      fail-on-severity:
+        description: "Minimum severity that fails the check: low, moderate, high, or critical."
+        type: string
+        default: "high"
+      fail-on-scopes:
+        description: "Comma-separated dependency scopes that fail: runtime, development, unknown."
+        type: string
+        default: "runtime"
+      allow-licenses:
+        description: "Comma-separated SPDX license IDs that are allowed. Empty = no allowlist."
+        type: string
+        default: ""
+      deny-licenses:
+        description: "Comma-separated SPDX license IDs that are denied. Empty = no denylist."
+        type: string
+        default: ""
+      comment-summary-in-pr:
+        description: "Post a summary comment on the PR. `always`, `on-failure`, or `never`."
+        type: string
+        default: "on-failure"
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: ${{ inputs.fail-on-severity }}
+          fail-on-scopes: ${{ inputs.fail-on-scopes }}
+          allow-licenses: ${{ inputs.allow-licenses }}
+          deny-licenses: ${{ inputs.deny-licenses }}
+          comment-summary-in-pr: ${{ inputs.comment-summary-in-pr }}

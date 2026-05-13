@@ -1,0 +1,137 @@
+name: Python CI (reusable)
+
+# Generic lint + typecheck + test workflow for Python projects. Uses uv for
+# fast installs when a `pyproject.toml` is present; falls back to pip with
+# `requirements.txt` otherwise. Each step is opt-out via inputs.
+#
+# Lint: ruff (fast, single-binary, defaults to PEP 8 + pyflakes + isort).
+# Typecheck: pyright (faster than mypy for most repos; consumer can swap).
+# Test: pytest.
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: 'JSON array of Python versions to test against, e.g. `["3.11","3.12"]`.'
+        type: string
+        default: '["3.12"]'
+      os-matrix:
+        type: string
+        default: '["ubuntu-latest"]'
+      working-directory:
+        type: string
+        default: "."
+      use-uv:
+        description: "Use uv for installs (requires pyproject.toml). Falls back to pip if false or no pyproject."
+        type: boolean
+        default: true
+      install-command:
+        description: 'Override install command. Empty = auto-detect (uv sync or pip install -e ".[dev]" / -r requirements.txt).'
+        type: string
+        default: ""
+      run-lint:
+        type: boolean
+        default: true
+      lint-command:
+        type: string
+        default: "ruff check ."
+      run-format-check:
+        type: boolean
+        default: true
+      format-check-command:
+        type: string
+        default: "ruff format --check ."
+      run-typecheck:
+        type: boolean
+        default: true
+      typecheck-command:
+        type: string
+        default: "pyright"
+      run-tests:
+        type: boolean
+        default: true
+      test-command:
+        type: string
+        default: "pytest"
+
+jobs:
+  ci:
+    name: ${{ matrix.os }} / py ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ${{ fromJSON(inputs.python-versions) }}
+        os: ${{ fromJSON(inputs.os-matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install uv
+        if: inputs.use-uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.install-command }}" ]; then
+            ${{ inputs.install-command }}
+          elif [ "${{ inputs.use-uv }}" = "true" ] && [ -f pyproject.toml ]; then
+            uv sync --all-extras --dev
+          elif [ -f pyproject.toml ]; then
+            python -m pip install --upgrade pip
+            pip install -e ".[dev]" || pip install -e .
+          elif [ -f requirements.txt ]; then
+            python -m pip install --upgrade pip
+            pip install -r requirements.txt
+            [ -f requirements-dev.txt ] && pip install -r requirements-dev.txt || true
+          else
+            echo "No pyproject.toml or requirements.txt found — nothing to install."
+          fi
+
+      - name: Lint (ruff check)
+        if: inputs.run-lint
+        shell: bash
+        run: |
+          if [ "${{ inputs.use-uv }}" = "true" ] && [ -f pyproject.toml ]; then
+            uv run ${{ inputs.lint-command }}
+          else
+            ${{ inputs.lint-command }}
+          fi
+
+      - name: Format check (ruff format)
+        if: inputs.run-format-check
+        shell: bash
+        run: |
+          if [ "${{ inputs.use-uv }}" = "true" ] && [ -f pyproject.toml ]; then
+            uv run ${{ inputs.format-check-command }}
+          else
+            ${{ inputs.format-check-command }}
+          fi
+
+      - name: Typecheck
+        if: inputs.run-typecheck
+        shell: bash
+        run: |
+          if [ "${{ inputs.use-uv }}" = "true" ] && [ -f pyproject.toml ]; then
+            uv run ${{ inputs.typecheck-command }}
+          else
+            ${{ inputs.typecheck-command }}
+          fi
+
+      - name: Tests
+        if: inputs.run-tests
+        shell: bash
+        run: |
+          if [ "${{ inputs.use-uv }}" = "true" ] && [ -f pyproject.toml ]; then
+            uv run ${{ inputs.test-command }}
+          else
+            ${{ inputs.test-command }}
+          fi

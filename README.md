@@ -1,25 +1,57 @@
 # github-workflows
 
-Reusable GitHub Actions workflows shared across repos under [@ArchonVII](https://github.com/ArchonVII).
+Reusable GitHub Actions workflows + a per-repo setup script, shared across all repos under [@ArchonVII](https://github.com/ArchonVII).
 
-Each workflow here uses `on: workflow_call`, so a consumer repo opts in by adding a tiny caller workflow that holds the actual trigger (`pull_request`, etc.) and `uses:` the reusable version. Pin the caller to a tag like `@v1` — that way a breaking change here does not auto-deploy everywhere.
+Each workflow uses `on: workflow_call`. A consumer repo opts in by adding a tiny caller workflow that holds the actual trigger (`pull_request`, `schedule`, etc.) and `uses:` the reusable version. Pin to `@v1` so an upstream change doesn't deploy silently everywhere.
+
+Companion repos:
+
+- **[`ArchonVII/.github`](https://github.com/ArchonVII/.github)** — auto-applied community health files (PR template, issue forms, `SECURITY.md`, `release.yml`). See [`STARTER.md`](https://github.com/ArchonVII/.github/blob/main/STARTER.md) for the full document-policy guide.
+- **[`ArchonVII/repo-template`](https://github.com/ArchonVII/repo-template)** — clone-and-go bootstrap with all the caller workflows pre-wired. Mark "Use this template" when creating a new repo.
+
+---
 
 ## Workflows
 
-| Workflow                 | Purpose                                                                                                                                       | Example caller                                                       |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `pr-policy.yml`          | Enforce PR body has `## Verification` / `### Verification Notes` / a checked box / a linked issue. Doc-only PRs skip. Also runs `actionlint`. | [`examples/pr-policy.yml`](examples/pr-policy.yml)                   |
-| `pr-body-autoinject.yml` | When a bot opens a non-doc PR with a freehand body, prepend a stub that satisfies `pr-policy`. Human PRs untouched.                           | [`examples/pr-body-autoinject.yml`](examples/pr-body-autoinject.yml) |
-| `changelog-fragment.yml` | Require a new file under `.changelog/unreleased/` (or your configured dir) whenever a PR touches `src/`. Skippable via `no-changelog` label.  | [`examples/changelog-fragment.yml`](examples/changelog-fragment.yml) |
-| `anomaly-to-issue.yml`   | On PR merge, scan for new files in `.anomalies/` and promote each to a GitHub issue with parsed frontmatter (`title`, `severity`, `labels`).  | [`examples/anomaly-to-issue.yml`](examples/anomaly-to-issue.yml)     |
-| `labeler.yml`            | Thin wrapper around `actions/labeler@v5` so all repos pin the same version.                                                                   | [`examples/labeler.yml`](examples/labeler.yml)                       |
-| `stale.yml`              | Auto-mark and auto-close stale issues/PRs. Wraps `actions/stale@v9`. Exempt labels configurable.                                              | [`examples/stale.yml`](examples/stale.yml)                           |
-| `lock-threads.yml`       | Lock closed issues/PRs after N days of inactivity. Wraps `dessant/lock-threads@v5`.                                                           | [`examples/lock-threads.yml`](examples/lock-threads.yml)             |
-| `semantic-pr-title.yml`  | Enforce Conventional Commits format on PR titles (`feat(scope): ...`). Wraps `amannn/action-semantic-pull-request@v5`.                        | [`examples/semantic-pr-title.yml`](examples/semantic-pr-title.yml)   |
+### PR contract & hygiene
+
+| Workflow                                                             | Purpose                                                                                                                                       | Example                                                              |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [`pr-policy.yml`](.github/workflows/pr-policy.yml)                   | Enforce PR body has `## Verification` / `### Verification Notes` / a checked box / a linked issue. Doc-only PRs skip. Also runs `actionlint`. | [`examples/pr-policy.yml`](examples/pr-policy.yml)                   |
+| [`pr-body-autoinject.yml`](.github/workflows/pr-body-autoinject.yml) | When a bot opens a non-doc PR with a freehand body, prepend a stub that satisfies `pr-policy`. Human PRs untouched.                           | [`examples/pr-body-autoinject.yml`](examples/pr-body-autoinject.yml) |
+| [`semantic-pr-title.yml`](.github/workflows/semantic-pr-title.yml)   | Enforce Conventional Commits format on PR titles. Wraps `amannn/action-semantic-pull-request@v5`.                                             | [`examples/semantic-pr-title.yml`](examples/semantic-pr-title.yml)   |
+| [`branch-naming.yml`](.github/workflows/branch-naming.yml)           | Enforce the `open`-skill branch convention (`agent/<tool>/<issue>-<slug>` or `<type>/<slug>`). Configurable regex.                            | [`examples/branch-naming.yml`](examples/branch-naming.yml)           |
+| [`changelog-fragment.yml`](.github/workflows/changelog-fragment.yml) | Require a new file under `.changelog/unreleased/` whenever a PR touches `src/`. Skippable via `no-changelog` label.                           | [`examples/changelog-fragment.yml`](examples/changelog-fragment.yml) |
+| [`labeler.yml`](.github/workflows/labeler.yml)                       | Thin wrapper around `actions/labeler@v5`.                                                                                                     | [`examples/labeler.yml`](examples/labeler.yml)                       |
+
+### Security & dependencies
+
+| Workflow                                                                   | Purpose                                                                                                                             | Example                                                                    |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [`codeql.yml`](.github/workflows/codeql.yml)                               | GitHub's native semantic code analysis. JS/TS, Python, Go, Java, C/C++, Ruby, Swift, Rust. Results land in the repo's Security tab. | [`examples/codeql.yml`](examples/codeql.yml)                               |
+| [`dependency-review.yml`](.github/workflows/dependency-review.yml)         | Block PRs that introduce vulnerable or copyleft-licensed dependencies. Operates on the lockfile diff.                               | [`examples/dependency-review.yml`](examples/dependency-review.yml)         |
+| [`auto-merge-dependabot.yml`](.github/workflows/auto-merge-dependabot.yml) | Auto-merge Dependabot PRs that match the allowed update types (default: patch + minor) and pass CI.                                 | [`examples/auto-merge-dependabot.yml`](examples/auto-merge-dependabot.yml) |
+
+### Generic CI
+
+| Workflow                                           | Purpose                                                                                                                                    | Example                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| [`node-ci.yml`](.github/workflows/node-ci.yml)     | Install + lint + typecheck + test for Node projects. Auto-detects `npm` / `pnpm` / `yarn` from lockfile. Matrix over Node versions and OS. | [`examples/node-ci.yml`](examples/node-ci.yml)     |
+| [`python-ci.yml`](.github/workflows/python-ci.yml) | Install (uv or pip) + ruff lint + ruff format-check + pyright + pytest. Each step opt-out. Matrix over Python versions and OS.             | [`examples/python-ci.yml`](examples/python-ci.yml) |
+
+### Repo hygiene
+
+| Workflow                                                         | Purpose                                                                                                      | Example                                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| [`stale.yml`](.github/workflows/stale.yml)                       | Auto-mark and auto-close stale issues/PRs. Wraps `actions/stale@v9`.                                         | [`examples/stale.yml`](examples/stale.yml)                       |
+| [`lock-threads.yml`](.github/workflows/lock-threads.yml)         | Lock closed issues/PRs after N days of inactivity. Wraps `dessant/lock-threads@v5`.                          | [`examples/lock-threads.yml`](examples/lock-threads.yml)         |
+| [`anomaly-to-issue.yml`](.github/workflows/anomaly-to-issue.yml) | On PR merge, scan for new files in `.anomalies/` and promote each to a GitHub issue with parsed frontmatter. | [`examples/anomaly-to-issue.yml`](examples/anomaly-to-issue.yml) |
+
+---
 
 ## How to consume
 
-In any repo where you want one of these, copy the example caller into `.github/workflows/` and commit it. Inputs are all optional — defaults match the original Pigafetta behavior.
+In any repo where you want one of these, copy the example caller into `.github/workflows/` and commit it. Inputs are all optional — defaults are conservative.
 
 ```yaml
 # .github/workflows/pr-policy.yml in a consumer repo
@@ -35,41 +67,55 @@ jobs:
     uses: ArchonVII/github-workflows/.github/workflows/pr-policy.yml@v1
 ```
 
+---
+
 ## Per-repo setup script
 
 `scripts/setup-repo.mjs` applies the standard label set and branch protection to a target repo via `gh api`. Idempotent — safe to re-run after adding labels here.
 
 ```bash
-# Dry-run first to see what would change
+# Dry-run first to preview changes
 node scripts/setup-repo.mjs ArchonVII/new-thing --dry-run
 
 # Apply for real
 node scripts/setup-repo.mjs ArchonVII/new-thing
 
-# Solo repo (skip the "require 1 approving review" rule — you can't approve your own PRs)
+# Solo repo (skip the "require 1 approving review" rule)
 node scripts/setup-repo.mjs ArchonVII/new-thing --solo
 ```
 
-What the script does:
+What the script applies:
 
-- Creates / updates the standard label set (~26 labels: type, severity, priority, status, workflow).
-- Enables branch protection on the default branch: require PR, dismiss stale reviews on push, linear history, no force-push, no deletions, conversations must resolve.
+- **Standard label set** (~30 labels):
+  - Type: `bug`, `enhancement`, `documentation`, `chore`, `refactor`, `tests`, `performance`, `dependencies`, `security`, `breaking`
+  - Severity (for `anomaly-to-issue`): `severity:low|medium|high|critical`
+  - Priority: `priority:p0|p1|p2|p3`
+  - Effort (from the `open` skill): `effort:s|m|l|xl`
+  - Status: `wip`, `blocked`, `stale`, `pinned`, `roadmap`, `needs-triage`
+  - Workflow: `no-changelog`, `anomaly`, `ignore-for-release`, `auto-merge`
+  - PRD: `prd`, `tracer-bullet`
+- **Branch protection** on the default branch: require PR, dismiss stale reviews on push, linear history, no force-push, no deletions, conversations must resolve. `--solo` sets required approvals to 0; default is 1.
 
-What it does NOT do (do these by hand or via PR):
+What the script does NOT do (do these by hand or via PR):
 
-- Write files into the target repo (`CODEOWNERS`, `dependabot.yml`) — the script prints templates instead.
-- Add reusable workflow callers — pick those per repo from `examples/`.
+- Write files into the target repo (`CODEOWNERS`, `dependabot.yml`) — the script prints templates instead. The `repo-template` repo has these pre-wired.
+- Add reusable workflow callers — pick those per repo from `examples/` (or use `repo-template`).
 - Configure required status checks — set in repo Settings → Branches once you know which workflows the repo runs.
+
+---
 
 ## Versioning
 
-Tags `v1`, `v2`, ... are the consumer-facing API surface. Breaking changes bump the major. Bug fixes and additive inputs land on `main` and the tag is fast-forwarded.
+Tags `v1`, `v2`, ... are the consumer-facing API surface. Breaking changes bump the major. Bug fixes and additive workflows/inputs land on `main` and the major tag is fast-forwarded — consumers pinned to `@v1` get them on the next workflow run.
 
 To pin to a specific commit instead of a moving tag, replace `@v1` with the full SHA.
 
-## Why two repos, not one
+---
 
-- **`ArchonVII/.github`** holds community health files (PR template, issue templates, profile README) that GitHub picks up automatically as defaults for every repo with no own copy. No workflow plumbing involved.
-- **`ArchonVII/github-workflows`** (this repo) holds reusable workflows. Consumers explicitly opt in per repo via a thin caller workflow.
+## Why three repos
 
-Keeping them separate means a repo can use the templates without paying any CI cost, and another repo can use the workflows without inheriting the templates.
+- **[`ArchonVII/.github`](https://github.com/ArchonVII/.github)** — community health _files_. GitHub picks these up automatically as defaults for every repo without its own copy. No CI, no opt-in.
+- **`ArchonVII/github-workflows`** (this repo) — reusable _workflows_ and a _setup script_. Consumers opt in per repo.
+- **[`ArchonVII/repo-template`](https://github.com/ArchonVII/repo-template)** — _bootstrap template_ for new repos. Marked as a GitHub template repo; clone it via "Use this template" to start with all the callers, a `dependabot.yml`, `CHANGELOG.md`, `AGENTS.md`, etc. already in place.
+
+The three layers compose: the template gets you wired up on day one, the workflows keep working forever, and the `.github` defaults patch any holes in repos that drift from the template.

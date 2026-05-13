@@ -1,0 +1,59 @@
+name: Auto-merge Dependabot (reusable)
+
+# Auto-merges Dependabot PRs that pass CI, scoped to the configured update
+# types. Default: patch + minor for everything; major bumps still require
+# manual review. Squash-merges to keep history clean.
+#
+# Requires the repo's branch protection to require the relevant status
+# checks; otherwise auto-merge fires immediately on a green PR even before
+# CI has finished. (auto-merge waits for required checks specifically.)
+
+on:
+  workflow_call:
+    inputs:
+      allowed-update-types:
+        description: "Newline-separated semver-update types eligible for auto-merge: version-update:semver-patch, version-update:semver-minor, version-update:semver-major."
+        type: string
+        default: |
+          version-update:semver-patch
+          version-update:semver-minor
+      merge-method:
+        description: "Merge method: merge, squash, or rebase."
+        type: string
+        default: "squash"
+
+jobs:
+  automerge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Decide eligibility
+        id: gate
+        env:
+          ALLOWED: ${{ inputs.allowed-update-types }}
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+        run: |
+          if printf '%s\n' "$ALLOWED" | grep -Fxq "$UPDATE_TYPE"; then
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Update type '$UPDATE_TYPE' not in allowlist; manual review required."
+          fi
+
+      - name: Enable auto-merge
+        if: steps.gate.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          METHOD: ${{ inputs.merge-method }}
+        run: |
+          gh pr merge --auto --"$METHOD" "$PR_URL"
