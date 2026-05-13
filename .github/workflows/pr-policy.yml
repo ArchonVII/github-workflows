@@ -1,0 +1,128 @@
+name: PR Policy (reusable)
+
+# Reusable workflow that enforces a minimum PR body contract:
+#   1. PR body links an issue (Closes / Fixes / Refs #N)
+#   2. PR body contains a Verification heading
+#   3. PR body contains a Verification Notes heading
+#   4. At least one verification checkbox is checked (`- [x]`)
+#
+# Doc-only PRs (every changed file matches the doc filter) skip the ceremony.
+# Draft PRs are advisory only.
+
+on:
+  workflow_call:
+    inputs:
+      require-linked-issue:
+        description: "Require Closes/Fixes/Refs #N in the PR body."
+        type: boolean
+        default: true
+      require-verification-section:
+        description: "Require both Verification headings in the PR body."
+        type: boolean
+        default: true
+      require-checked-box:
+        description: "Require at least one `- [x]` checked box in the body."
+        type: boolean
+        default: true
+      verification-section-heading:
+        description: "H2 heading exact text (without the `## `)."
+        type: string
+        default: "Verification"
+      verification-notes-heading:
+        description: "H3 heading exact text (without the `### `)."
+        type: string
+        default: "Verification Notes"
+      doc-only-extensions:
+        description: "Pipe-separated extensions (no dots) considered doc-only."
+        type: string
+        default: "md|txt|png|jpg|jpeg|gif|svg|webp|bmp|ico|avif"
+      doc-only-path-prefixes:
+        description: "Newline-separated path prefixes also treated as doc-only."
+        type: string
+        default: |
+          .changelog/
+      run-actionlint:
+        description: "Also run actionlint on the PR."
+        type: boolean
+        default: true
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Enforce ready-for-review PR policy
+        uses: actions/github-script@v7
+        env:
+          REQUIRE_LINKED_ISSUE: ${{ inputs.require-linked-issue }}
+          REQUIRE_VERIFICATION_SECTION: ${{ inputs.require-verification-section }}
+          REQUIRE_CHECKED_BOX: ${{ inputs.require-checked-box }}
+          VERIFICATION_H2: ${{ inputs.verification-section-heading }}
+          VERIFICATION_H3: ${{ inputs.verification-notes-heading }}
+          DOC_EXT_LIST: ${{ inputs.doc-only-extensions }}
+          DOC_PREFIXES: ${{ inputs.doc-only-path-prefixes }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (pr.draft) {
+              core.info('Draft PR; ready-for-review policy is advisory until draft is cleared.');
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+            const docExtRe = new RegExp(`\\.(${process.env.DOC_EXT_LIST})$`, 'i');
+            const prefixes = process.env.DOC_PREFIXES
+              .split('\n')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const isDocFile = (p) => docExtRe.test(p) || prefixes.some((pre) => p.startsWith(pre));
+            if (files.length > 0 && files.every((f) => isDocFile(f.filename))) {
+              core.info(`Doc-only PR (${files.length} file${files.length === 1 ? '' : 's'}); verification ceremony skipped.`);
+              return;
+            }
+
+            const body = pr.body || '';
+            const failures = [];
+
+            if (process.env.REQUIRE_LINKED_ISSUE === 'true') {
+              if (!/(Closes|Fixes|Refs)\s+#\d+/i.test(body)) {
+                failures.push('PR body must link an issue with `Closes #N`, `Fixes #N`, or `Refs #N`.');
+              }
+            }
+
+            if (process.env.REQUIRE_VERIFICATION_SECTION === 'true') {
+              const h2 = new RegExp(`##\\s+${process.env.VERIFICATION_H2}`, 'i');
+              const h3 = new RegExp(`###\\s+${process.env.VERIFICATION_H3}`, 'i');
+              if (!h2.test(body) || !h3.test(body)) {
+                failures.push(`PR body must include \`## ${process.env.VERIFICATION_H2}\` and \`### ${process.env.VERIFICATION_H3}\` sections.`);
+              }
+            }
+
+            if (process.env.REQUIRE_CHECKED_BOX === 'true') {
+              if (!/-\s+\[[xX]\]/.test(body)) {
+                failures.push('PR body must record completed verification with at least one checked checkbox.');
+              }
+            }
+
+            if (failures.length > 0) {
+              core.setFailed(failures.join('\n'));
+            }
+
+  actionlint:
+    if: inputs.run-actionlint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run actionlint
+        uses: raven-actions/actionlint@v2
+        with:
+          version: 1.7.7
+          fail-on-error: true

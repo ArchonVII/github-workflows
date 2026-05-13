@@ -1,0 +1,31 @@
+name: Labeler (reusable)
+
+# Thin reusable wrapper around actions/labeler@v5. The consumer repo still
+# owns its labeler config file at `.github/labeler.yml` (or wherever
+# configuration-path points). This workflow exists so consumers can pin a
+# single version of actions/labeler across all their repos.
+
+on:
+  workflow_call:
+    inputs:
+      configuration-path:
+        description: "Path to the labeler config file in the consumer repo."
+        type: string
+        default: ".github/labeler.yml"
+      sync-labels:
+        description: "Remove labels when their path globs no longer match."
+        type: boolean
+        default: true
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          sync-labels: ${{ inputs.sync-labels }}
+          configuration-path: ${{ inputs.configuration-path }}
