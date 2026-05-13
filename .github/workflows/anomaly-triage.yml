@@ -1,0 +1,324 @@
+name: Anomaly triage (reusable)
+
+# Reads `.archon/anomalies-thispr.md` on the PR branch, classifies each entry
+# as related-to-PR or unrelated, then routes:
+#
+#   related   -> a sticky PR review comment with the anomaly context
+#   unrelated -> a new GitHub issue (in this repo or a configured downstream repo)
+#
+# A final summary comment on the PR lists everything that was filed.
+#
+# Idempotent: each anomaly carries a fingerprint; existing comments/issues
+# bearing the same fingerprint are reused instead of duplicated.
+#
+# Entry format (markdown, in `.archon/anomalies-thispr.md`):
+#
+#   ## <title>
+#
+#   - **Severity:** low | medium | high | critical
+#   - **File:** path/to/file.ext            (optional)
+#   - **Related to PR:** yes | no | unknown (optional, default unknown)
+#   - **Downstream repo:** owner/repo       (optional — only for unrelated entries
+#                                             whose root cause lives elsewhere)
+#
+#   <free-form context paragraph(s)>
+#
+# Blocks are separated by the next `## ` heading.
+#
+# Scope (v0.1.1): triage + routing only. No automatic fix commits — those are
+# deferred to v0.1.2 once the classifier has been exercised on real PRs.
+
+on:
+  workflow_call:
+    inputs:
+      anomalies-path:
+        description: "Path to the per-PR anomalies file."
+        type: string
+        default: ".archon/anomalies-thispr.md"
+      default-downstream-repo:
+        description: "Where to file unrelated issues when an entry doesn't specify a `Downstream repo`. Empty = current repo."
+        type: string
+        default: ""
+      auto-triage-label:
+        description: "Label applied to issues this workflow creates."
+        type: string
+        default: "auto-triaged"
+      dry-run:
+        description: "Parse and log only — make no API mutations."
+        type: boolean
+        default: false
+      run-actionlint:
+        description: "Also run actionlint on the workflow itself when invoked."
+        type: boolean
+        default: false
+    secrets:
+      triage-token:
+        description: "PAT with `issues: write` on the downstream repo(s). Only needed when filing into a repo other than the current one."
+        required: false
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Triage anomalies
+        uses: actions/github-script@v7
+        env:
+          ANOMALIES_PATH: ${{ inputs.anomalies-path }}
+          DEFAULT_DOWNSTREAM: ${{ inputs.default-downstream-repo }}
+          AUTO_LABEL: ${{ inputs.auto-triage-label }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          TRIAGE_TOKEN: ${{ secrets.triage-token }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        with:
+          script: |
+            const fs = require('fs');
+            const crypto = require('crypto');
+            const { execSync } = require('child_process');
+
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const path = process.env.ANOMALIES_PATH;
+            const defaultDownstream = process.env.DEFAULT_DOWNSTREAM.trim();
+            const dryRun = process.env.DRY_RUN === 'true';
+            const autoLabel = process.env.AUTO_LABEL;
+            const triageToken = process.env.TRIAGE_TOKEN;
+
+            if (!fs.existsSync(path)) {
+              core.info(`No anomalies file at \`${path}\`; nothing to triage.`);
+              return;
+            }
+
+            const raw = fs.readFileSync(path, 'utf8');
+
+            // ---------- Parse ----------
+            // Split on second-level headings; first segment before the first ## is preamble.
+            const segments = raw.split(/^##\s+/m);
+            const preamble = segments.shift();
+            const entries = [];
+            for (const seg of segments) {
+              const nl = seg.indexOf('\n');
+              const title = (nl === -1 ? seg : seg.slice(0, nl)).trim();
+              const rest = nl === -1 ? '' : seg.slice(nl + 1);
+              const fields = {};
+              const bodyLines = [];
+              for (const line of rest.split('\n')) {
+                const m = /^-\s+\*\*([^*]+)\*\*:\s*(.+)$/.exec(line);
+                if (m) {
+                  fields[m[1].trim().toLowerCase()] = m[2].trim();
+                } else {
+                  bodyLines.push(line);
+                }
+              }
+              const body = bodyLines.join('\n').trim();
+              const fingerprint = crypto
+                .createHash('sha256')
+                .update([title, fields.file || '', body.slice(0, 200)].join(' '))
+                .digest('hex')
+                .slice(0, 12);
+              entries.push({
+                title,
+                severity: (fields.severity || 'medium').toLowerCase(),
+                file: fields.file || null,
+                relatedToPr: (fields['related to pr'] || 'unknown').toLowerCase(),
+                downstreamRepo: fields['downstream repo'] || null,
+                body,
+                fingerprint,
+              });
+            }
+
+            if (entries.length === 0) {
+              core.info(`Anomalies file is empty.`);
+              return;
+            }
+            core.info(`Parsed ${entries.length} anomaly entr${entries.length === 1 ? 'y' : 'ies'}.`);
+
+            // ---------- Classify ----------
+            const baseRef = process.env.BASE_REF;
+            let changedFiles = new Set();
+            try {
+              const out = execSync(
+                `git fetch --no-tags origin ${baseRef} && git diff --name-only origin/${baseRef}...HEAD`,
+                { encoding: 'utf8' }
+              );
+              for (const f of out.split('\n')) if (f.trim()) changedFiles.add(f.trim());
+            } catch (e) {
+              core.warning(`Could not compute changed files: ${e.message}`);
+            }
+
+            for (const e of entries) {
+              if (e.relatedToPr === 'yes' || e.relatedToPr === 'no') continue;
+              if (e.file && changedFiles.has(e.file)) e.relatedToPr = 'yes';
+              else e.relatedToPr = 'no';
+            }
+
+            // ---------- Octokit clients ----------
+            const local = github;
+            const downstream = triageToken
+              ? require('@actions/github').getOctokit(triageToken)
+              : null;
+
+            // ---------- Fetch existing PR comments + repo issues (idempotency) ----------
+            const existingComments = await local.paginate(local.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: pr.number,
+              per_page: 100,
+            });
+            const commentByFp = new Map();
+            for (const c of existingComments) {
+              const m = /<!-- archon-triage:related:([0-9a-f]{12}) -->/.exec(c.body || '');
+              if (m) commentByFp.set(m[1], c);
+            }
+
+            async function findExistingIssue(fp, targetOwner, targetRepo, client) {
+              const q = `repo:${targetOwner}/${targetRepo} in:body "archon-triage:unrelated:${fp}"`;
+              try {
+                const res = await client.rest.search.issuesAndPullRequests({ q, per_page: 1 });
+                return res.data.items[0] || null;
+              } catch {
+                return null;
+              }
+            }
+
+            // ---------- Route ----------
+            const related = [];
+            const unrelatedResults = [];
+
+            for (const e of entries) {
+              const sevTag = `[${e.severity}]`;
+              if (e.relatedToPr === 'yes') {
+                const body =
+                  `<!-- archon-triage:related:${e.fingerprint} -->\n` +
+                  `**🩺 Anomaly noticed by an agent in this PR** ${sevTag}\n\n` +
+                  `**${e.title}**\n\n` +
+                  (e.file ? `_File:_ \`${e.file}\`\n\n` : '') +
+                  `${e.body}\n\n` +
+                  `_This entry was classified as related to this PR. Address it in this PR or downgrade to unrelated in \`.archon/anomalies-thispr.md\`._`;
+                const existing = commentByFp.get(e.fingerprint);
+                if (dryRun) {
+                  core.info(`[dry-run] would ${existing ? 'update' : 'create'} related comment for "${e.title}"`);
+                } else if (existing) {
+                  await local.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+                } else {
+                  await local.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+                }
+                related.push({ title: e.title, fp: e.fingerprint });
+                continue;
+              }
+
+              // Unrelated path
+              const targetSpec = (e.downstreamRepo || defaultDownstream || `${owner}/${repo}`).trim();
+              const [tOwner, tRepo] = targetSpec.split('/');
+              const isCrossRepo = tOwner !== owner || tRepo !== repo;
+              const client = isCrossRepo ? downstream || local : local;
+
+              if (isCrossRepo && !downstream) {
+                core.warning(
+                  `Cannot file issue in ${targetSpec}: no triage-token provided. Falling back to current repo.`
+                );
+              }
+              const useOwner = isCrossRepo && downstream ? tOwner : owner;
+              const useRepo = isCrossRepo && downstream ? tRepo : repo;
+
+              const existing = await findExistingIssue(e.fingerprint, useOwner, useRepo, client);
+              const issueBody =
+                `<!-- archon-triage:unrelated:${e.fingerprint} -->\n` +
+                `**Severity:** ${e.severity}\n` +
+                (e.file ? `**File:** \`${e.file}\`\n` : '') +
+                `**Originating PR:** ${pr.html_url}\n\n` +
+                `${e.body}\n\n` +
+                `_Auto-triaged by \`anomaly-triage.yml\`. Originally noted on PR #${pr.number} (${owner}/${repo}); classified as unrelated to that PR's scope._`;
+
+              let resultUrl;
+              if (existing) {
+                resultUrl = existing.html_url;
+                if (!dryRun) {
+                  await client.rest.issues.update({
+                    owner: useOwner,
+                    repo: useRepo,
+                    issue_number: existing.number,
+                    body: issueBody,
+                  });
+                }
+              } else if (dryRun) {
+                core.info(`[dry-run] would create issue in ${useOwner}/${useRepo} for "${e.title}"`);
+                resultUrl = `(dry-run) ${useOwner}/${useRepo}`;
+              } else {
+                const created = await client.rest.issues.create({
+                  owner: useOwner,
+                  repo: useRepo,
+                  title: `${sevTag} ${e.title}`,
+                  body: issueBody,
+                  labels: [autoLabel],
+                });
+                resultUrl = created.data.html_url;
+              }
+
+              unrelatedResults.push({
+                title: e.title,
+                fp: e.fingerprint,
+                url: resultUrl,
+                crossRepo: isCrossRepo,
+                target: `${useOwner}/${useRepo}`,
+              });
+            }
+
+            // ---------- Summary comment ----------
+            const summaryMarker = '<!-- archon-triage:summary -->';
+            const lines = [
+              summaryMarker,
+              `### 🩺 Anomaly triage`,
+              ``,
+              `${entries.length} anomaly entr${entries.length === 1 ? 'y' : 'ies'} found in \`${path}\`.`,
+              ``,
+            ];
+            if (related.length) {
+              lines.push(`**Related to this PR (${related.length}):**`);
+              for (const r of related) lines.push(`- ${r.title}`);
+              lines.push('');
+            }
+            if (unrelatedResults.length) {
+              lines.push(`**Unrelated — filed as issues (${unrelatedResults.length}):**`);
+              for (const u of unrelatedResults) {
+                lines.push(`- ${u.title} → ${u.url}${u.crossRepo ? `  _(downstream: ${u.target})_` : ''}`);
+              }
+              lines.push('');
+            }
+            const summaryBody = lines.join('\n');
+
+            const summary = existingComments.find((c) => (c.body || '').includes(summaryMarker));
+            if (dryRun) {
+              core.info(`[dry-run] would ${summary ? 'update' : 'create'} PR summary comment`);
+              core.info(summaryBody);
+            } else if (summary) {
+              await local.rest.issues.updateComment({ owner, repo, comment_id: summary.id, body: summaryBody });
+            } else {
+              await local.rest.issues.createComment({ owner, repo, issue_number: pr.number, body: summaryBody });
+            }
+
+            core.setOutput('related-count', related.length);
+            core.setOutput('unrelated-count', unrelatedResults.length);
+
+  actionlint:
+    if: inputs.run-actionlint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run actionlint
+        uses: raven-actions/actionlint@v2
+        with:
+          version: 1.7.7
+          fail-on-error: true

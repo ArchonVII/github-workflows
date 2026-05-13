@@ -39,6 +39,12 @@ Companion repos:
 | [`node-ci.yml`](.github/workflows/node-ci.yml)     | Install + lint + typecheck + test for Node projects. Auto-detects `npm` / `pnpm` / `yarn` from lockfile. Matrix over Node versions and OS. | [`examples/node-ci.yml`](examples/node-ci.yml)     |
 | [`python-ci.yml`](.github/workflows/python-ci.yml) | Install (uv or pip) + ruff lint + ruff format-check + pyright + pytest. Each step opt-out. Matrix over Python versions and OS.             | [`examples/python-ci.yml`](examples/python-ci.yml) |
 
+### Agent workflow
+
+| Workflow                                                     | Purpose                                                                                                                                                                                                                                                       | Example                                                      |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| [`anomaly-triage.yml`](.github/workflows/anomaly-triage.yml) | Read `.archon/anomalies-thispr.md` written by an agent during a PR. Classify each entry as related-to-PR (post sticky review comment) or unrelated (file a new issue, optionally in a downstream repo). Idempotent across re-runs. Tool-agnostic by contract. | [`examples/anomaly-triage.yml`](examples/anomaly-triage.yml) |
+
 ### Repo hygiene
 
 | Workflow                                                         | Purpose                                                                                                      | Example                                                          |
