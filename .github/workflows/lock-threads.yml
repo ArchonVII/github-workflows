@@ -1,0 +1,43 @@
+name: Lock Threads (reusable)
+
+# Lock conversations on closed issues/PRs after N days of inactivity. Wraps
+# dessant/lock-threads@v5. Prevents necro-comments on long-shipped work.
+
+on:
+  workflow_call:
+    inputs:
+      issue-inactive-days:
+        type: number
+        default: 90
+      pr-inactive-days:
+        type: number
+        default: 30
+      issue-lock-reason:
+        description: "GitHub lock reason: off-topic, too heated, resolved, or spam."
+        type: string
+        default: "resolved"
+      pr-lock-reason:
+        type: string
+        default: "resolved"
+      issue-comment:
+        type: string
+        default: ""
+      pr-comment:
+        type: string
+        default: ""
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: dessant/lock-threads@v5
+        with:
+          issue-inactive-days: ${{ inputs.issue-inactive-days }}
+          pr-inactive-days: ${{ inputs.pr-inactive-days }}
+          issue-lock-reason: ${{ inputs.issue-lock-reason }}
+          pr-lock-reason: ${{ inputs.pr-lock-reason }}
+          issue-comment: ${{ inputs.issue-comment }}
+          pr-comment: ${{ inputs.pr-comment }}

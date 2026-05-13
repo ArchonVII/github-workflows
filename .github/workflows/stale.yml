@@ -1,0 +1,63 @@
+name: Stale (reusable)
+
+# Auto-mark and auto-close stale issues and PRs. Wraps actions/stale@v9 so
+# every consumer repo gets the same versioning and a consistent tone.
+#
+# Defaults are conservative: 60 days idle → marked stale, another 14 days
+# idle → closed. Override per repo via inputs.
+
+on:
+  workflow_call:
+    inputs:
+      days-before-stale:
+        type: number
+        default: 60
+      days-before-close:
+        type: number
+        default: 14
+      stale-issue-label:
+        type: string
+        default: "stale"
+      stale-pr-label:
+        type: string
+        default: "stale"
+      exempt-issue-labels:
+        description: "Comma-separated labels that prevent issues from going stale."
+        type: string
+        default: "pinned,roadmap,blocked,priority:p0,priority:p1"
+      exempt-pr-labels:
+        type: string
+        default: "pinned,wip,blocked"
+      stale-issue-message:
+        type: string
+        default: "This issue has been inactive for a while. If it is still relevant, leave a comment or it will be closed automatically."
+      stale-pr-message:
+        type: string
+        default: "This PR has been inactive for a while. If it is still in progress, push a commit or leave a comment; otherwise it will be closed automatically."
+      close-issue-message:
+        type: string
+        default: "Closing as stale. Reopen anytime if this is still relevant."
+      close-pr-message:
+        type: string
+        default: "Closing as stale. Reopen anytime to continue."
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-stale: ${{ inputs.days-before-stale }}
+          days-before-close: ${{ inputs.days-before-close }}
+          stale-issue-label: ${{ inputs.stale-issue-label }}
+          stale-pr-label: ${{ inputs.stale-pr-label }}
+          exempt-issue-labels: ${{ inputs.exempt-issue-labels }}
+          exempt-pr-labels: ${{ inputs.exempt-pr-labels }}
+          stale-issue-message: ${{ inputs.stale-issue-message }}
+          stale-pr-message: ${{ inputs.stale-pr-message }}
+          close-issue-message: ${{ inputs.close-issue-message }}
+          close-pr-message: ${{ inputs.close-pr-message }}
+          operations-per-run: 100

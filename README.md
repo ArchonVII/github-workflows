@@ -13,6 +13,9 @@ Each workflow here uses `on: workflow_call`, so a consumer repo opts in by addin
 | `changelog-fragment.yml` | Require a new file under `.changelog/unreleased/` (or your configured dir) whenever a PR touches `src/`. Skippable via `no-changelog` label.  | [`examples/changelog-fragment.yml`](examples/changelog-fragment.yml) |
 | `anomaly-to-issue.yml`   | On PR merge, scan for new files in `.anomalies/` and promote each to a GitHub issue with parsed frontmatter (`title`, `severity`, `labels`).  | [`examples/anomaly-to-issue.yml`](examples/anomaly-to-issue.yml)     |
 | `labeler.yml`            | Thin wrapper around `actions/labeler@v5` so all repos pin the same version.                                                                   | [`examples/labeler.yml`](examples/labeler.yml)                       |
+| `stale.yml`              | Auto-mark and auto-close stale issues/PRs. Wraps `actions/stale@v9`. Exempt labels configurable.                                              | [`examples/stale.yml`](examples/stale.yml)                           |
+| `lock-threads.yml`       | Lock closed issues/PRs after N days of inactivity. Wraps `dessant/lock-threads@v5`.                                                           | [`examples/lock-threads.yml`](examples/lock-threads.yml)             |
+| `semantic-pr-title.yml`  | Enforce Conventional Commits format on PR titles (`feat(scope): ...`). Wraps `amannn/action-semantic-pull-request@v5`.                        | [`examples/semantic-pr-title.yml`](examples/semantic-pr-title.yml)   |
 
 ## How to consume
 
@@ -31,6 +34,32 @@ jobs:
   policy:
     uses: ArchonVII/github-workflows/.github/workflows/pr-policy.yml@v1
 ```
+
+## Per-repo setup script
+
+`scripts/setup-repo.mjs` applies the standard label set and branch protection to a target repo via `gh api`. Idempotent — safe to re-run after adding labels here.
+
+```bash
+# Dry-run first to see what would change
+node scripts/setup-repo.mjs ArchonVII/new-thing --dry-run
+
+# Apply for real
+node scripts/setup-repo.mjs ArchonVII/new-thing
+
+# Solo repo (skip the "require 1 approving review" rule — you can't approve your own PRs)
+node scripts/setup-repo.mjs ArchonVII/new-thing --solo
+```
+
+What the script does:
+
+- Creates / updates the standard label set (~26 labels: type, severity, priority, status, workflow).
+- Enables branch protection on the default branch: require PR, dismiss stale reviews on push, linear history, no force-push, no deletions, conversations must resolve.
+
+What it does NOT do (do these by hand or via PR):
+
+- Write files into the target repo (`CODEOWNERS`, `dependabot.yml`) — the script prints templates instead.
+- Add reusable workflow callers — pick those per repo from `examples/`.
+- Configure required status checks — set in repo Settings → Branches once you know which workflows the repo runs.
 
 ## Versioning
 

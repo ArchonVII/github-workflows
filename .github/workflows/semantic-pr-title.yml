@@ -1,0 +1,60 @@
+name: Semantic PR Title (reusable)
+
+# Enforce Conventional Commits format on PR titles:
+#   <type>(<scope>): <description>
+# e.g. `feat(auth): add OAuth device flow`, `fix(ui): clamp slider range`.
+#
+# This is the format my AGENTS.md mandates for commit messages; running it on
+# PR titles too means the squash-merge commit (which uses the PR title) is
+# already conformant. Wraps amannn/action-semantic-pull-request@v5.
+
+on:
+  workflow_call:
+    inputs:
+      types:
+        description: "Newline-separated list of allowed types."
+        type: string
+        default: |
+          feat
+          fix
+          refactor
+          test
+          docs
+          style
+          chore
+          perf
+          ci
+          build
+          revert
+      scopes:
+        description: "Optional newline-separated list of allowed scopes. Empty = any scope allowed."
+        type: string
+        default: ""
+      require-scope:
+        description: "Require a (scope) on every PR title."
+        type: boolean
+        default: false
+      subject-pattern:
+        description: "Optional regex the subject must match (e.g. ^[A-Z] to require capitalization)."
+        type: string
+        default: ""
+      validate-single-commit:
+        description: "When a PR has exactly one commit, also validate that commit message."
+        type: boolean
+        default: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: ${{ inputs.types }}
+          scopes: ${{ inputs.scopes }}
+          requireScope: ${{ inputs.require-scope }}
+          subjectPattern: ${{ inputs.subject-pattern }}
+          validateSingleCommit: ${{ inputs.validate-single-commit }}
