@@ -21,11 +21,12 @@ Local working trees: `C:\github\.github\`, `C:\github\github-workflows\`, `C:\gi
 
 ## What ships today
 
-### Reusable workflows (14)
+### Reusable workflows (15)
 
 **PR contract & hygiene:** `pr-policy`, `pr-body-autoinject`, `semantic-pr-title`, `branch-naming`, `changelog-fragment`, `labeler`
 **Security & dependencies:** `codeql`, `dependency-review`, `auto-merge-dependabot`
 **Generic CI:** `node-ci`, `python-ci`
+**Agent workflow:** `anomaly-triage`
 **Repo hygiene:** `stale`, `lock-threads`, `anomaly-to-issue`
 
 Each has a matching `examples/<name>.yml` caller. See [`README.md`](README.md) for the full table with descriptions.
