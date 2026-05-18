@@ -1,0 +1,45 @@
+name: Actionlint (reusable)
+
+# Lints every GitHub Actions workflow file in `.github/workflows/` and
+# runs shellcheck against any `run:` blocks. Catches workflow-syntax errors
+# before they can land on `main` and silently disable CI.
+#
+# Wraps raven-actions/actionlint@v2 (the same action pr-policy.yml uses for
+# its optional actionlint job). Pin the actionlint binary version explicitly
+# so a new release does not change behavior under our feet.
+#
+# Consumers normally invoke this via the thin caller in
+# `repo-template/.github/workflows/actionlint.yml`, which triggers on PRs
+# that touch `.github/workflows/**` or `.githooks/**` and on push to main.
+# F3 in docs/phase2/findings.md.
+
+on:
+  workflow_call:
+    inputs:
+      actionlint-version:
+        description: "Pinned actionlint binary version (matches raven-actions/actionlint `version` input)."
+        type: string
+        default: "1.7.7"
+      fail-on-error:
+        description: "Fail the job when actionlint reports any issue."
+        type: boolean
+        default: true
+      shellcheck-enabled:
+        description: "Enable shellcheck on `run:` blocks (raven-actions/actionlint default behavior)."
+        type: boolean
+        default: true
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run actionlint
+        uses: raven-actions/actionlint@v2
+        with:
+          version: ${{ inputs.actionlint-version }}
+          fail-on-error: ${{ inputs.fail-on-error }}
+          shellcheck: ${{ inputs.shellcheck-enabled && 'true' || 'false' }}
