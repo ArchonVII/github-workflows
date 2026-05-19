@@ -36,6 +36,7 @@ Companion repos:
 
 | Workflow                                           | Purpose                                                                                                                                    | Example                                            |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| [`repo-required-gate.yml`](.github/workflows/repo-required-gate.yml) | Always-reporting PR gate for branch protection. Detects changed files, runs relevant internal checks, and exposes one stable `repo-required-gate / decision` check. | [`examples/repo-required-gate.yml`](examples/repo-required-gate.yml) |
 | [`node-ci.yml`](.github/workflows/node-ci.yml)     | Install + lint + typecheck + test for Node projects. Auto-detects `npm` / `pnpm` / `yarn` from lockfile. Matrix over Node versions and OS. | [`examples/node-ci.yml`](examples/node-ci.yml)     |
 | [`python-ci.yml`](.github/workflows/python-ci.yml) | Install (uv or pip) + ruff lint + ruff format-check + pyright + pytest. Each step opt-out. Matrix over Python versions and OS.             | [`examples/python-ci.yml`](examples/python-ci.yml) |
 
@@ -58,6 +59,15 @@ Companion repos:
 ## How to consume
 
 In any repo where you want one of these, copy the example caller into `.github/workflows/` and commit it. Inputs are all optional — defaults are conservative.
+
+For branch protection, prefer the single-gate contract:
+
+```text
+Required status check:
+repo-required-gate / decision
+```
+
+Keep targeted checks inside the gate or leave them non-required. Do not make branch protection depend on workflows that can be skipped by path filters; GitHub can leave those required checks pending.
 
 ```yaml
 # .github/workflows/pr-policy.yml in a consumer repo
@@ -106,7 +116,7 @@ What the script does NOT do (do these by hand or via PR):
 
 - Write files into the target repo (`CODEOWNERS`, `dependabot.yml`) — the script prints templates instead. The `repo-template` repo has these pre-wired.
 - Add reusable workflow callers — pick those per repo from `examples/` (or use `repo-template`).
-- Configure required status checks — set in repo Settings → Branches once you know which workflows the repo runs.
+- Configure required status checks — after the first PR run, set repo Settings → Branches to require `repo-required-gate / decision`.
 
 ---
 

@@ -236,12 +236,12 @@ What this script did NOT do (commit these via a regular PR):
            interval: weekly
        # Add per-language ecosystems (npm, pip, cargo, ...) as needed.
 
-  3. Reusable workflows you want from ArchonVII/github-workflows
-     (copy from the examples/ directory of that repo).
+  3. Reusable workflows you want from ArchonVII/github-workflows.
+     New repos should start with examples/repo-required-gate.yml.
 
   4. Required status checks — set these in repo Settings → Branches
-     once you know which workflows you've added (e.g. \`ci-success\`,
-     \`policy\`, \`actionlint\`).
+     after the first PR run reports this exact check:
+     \`repo-required-gate / decision\`.
 
 ─────────────────────────────────────────────────────────────
 `);
