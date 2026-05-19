@@ -1,0 +1,377 @@
+name: Repo Required Gate (reusable)
+
+# Single required branch-protection surface for consumer repos.
+# Consumers should require only `repo-required-gate / decision`.
+# This workflow must be called by a caller that has no path filters.
+
+on:
+  workflow_call:
+    inputs:
+      stack:
+        description: "Project stack: node, python, or minimal."
+        type: string
+        default: "minimal"
+      working-directory:
+        description: "Subdirectory for language CI."
+        type: string
+        default: "."
+      node-versions:
+        description: 'JSON array of Node versions for Node CI.'
+        type: string
+        default: '["22"]'
+      python-versions:
+        description: 'JSON array of Python versions for Python CI.'
+        type: string
+        default: '["3.12"]'
+      os-matrix:
+        description: 'JSON array of OS runners for language CI.'
+        type: string
+        default: '["ubuntu-latest"]'
+      branch-pattern:
+        description: "Regex for allowed PR head branch names."
+        type: string
+        default: '^(agent|feat|fix|chore|docs|ci|test|refactor|perf|release|dependabot)\/[A-Za-z0-9._\/-]+$'
+      require-linked-issue:
+        type: boolean
+        default: true
+      require-verification-section:
+        type: boolean
+        default: true
+      require-checked-box:
+        type: boolean
+        default: true
+      run-pr-contract:
+        type: boolean
+        default: true
+      run-dependency-review:
+        type: boolean
+        default: true
+      run-workflow-validation:
+        type: boolean
+        default: true
+      run-policy-validation:
+        type: boolean
+        default: true
+      npm-lint-script:
+        type: string
+        default: "lint"
+      npm-typecheck-script:
+        type: string
+        default: "typecheck"
+      npm-test-script:
+        type: string
+        default: "test"
+      npm-build-script:
+        type: string
+        default: ""
+      python-use-uv:
+        type: boolean
+        default: true
+      python-lint-command:
+        type: string
+        default: "ruff check ."
+      python-format-check-command:
+        type: string
+        default: "ruff format --check ."
+      python-typecheck-command:
+        type: string
+        default: "pyright"
+      python-test-command:
+        type: string
+        default: "pytest"
+
+jobs:
+  detect:
+    name: detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    outputs:
+      docs-only: ${{ steps.detect.outputs.docs-only }}
+      run-ci: ${{ steps.detect.outputs.run-ci }}
+      run-dependency-review: ${{ steps.detect.outputs.run-dependency-review }}
+      run-workflow-validation: ${{ steps.detect.outputs.run-workflow-validation }}
+      run-policy-validation: ${{ steps.detect.outputs.run-policy-validation }}
+      files-summary: ${{ steps.detect.outputs.files-summary }}
+    steps:
+      - name: Classify changed files
+        id: detect
+        uses: actions/github-script@v7
+        env:
+          STACK: ${{ inputs.stack }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.setOutput('docs-only', 'false');
+              core.setOutput('run-ci', String(process.env.STACK !== 'minimal'));
+              core.setOutput('run-dependency-review', 'false');
+              core.setOutput('run-workflow-validation', 'true');
+              core.setOutput('run-policy-validation', 'true');
+              core.setOutput('files-summary', 'non-PR event: broad validation; language CI only for non-minimal stacks');
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const names = files.map((file) => file.filename);
+            const docRe = /\.(md|mdx|txt|png|jpg|jpeg|gif|svg|webp|bmp|ico|avif)$/i;
+            const codeRe = /\.(c|cc|cpp|cs|go|java|js|jsx|ts|tsx|mjs|cjs|py|rs|rb|php|swift|kt|kts|scala)$/i;
+            const packageRe = /(^|\/)(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|pyproject\.toml|requirements(-dev)?\.txt|uv\.lock|poetry\.lock|Pipfile(\.lock)?|Cargo\.toml|Cargo\.lock|go\.mod|go\.sum)$/;
+            const docsOnly = names.length > 0 && names.every((name) =>
+              docRe.test(name) || name.startsWith('.changelog/') || name.startsWith('docs/')
+            );
+            const workflowOrHook = names.some((name) =>
+              name.startsWith('.github/workflows/') || name.startsWith('.githooks/')
+            );
+            const policy = names.some((name) =>
+              name === 'AGENTS.md' ||
+              name === 'CLAUDE.md' ||
+              name === 'GEMINI.md' ||
+              name === '.agent/check-map.yml' ||
+              name.startsWith('.agent/schema/') ||
+              name.startsWith('.github/')
+            );
+            const packageTouched = names.some((name) => packageRe.test(name));
+            const codeTouched = names.some((name) => {
+              if (name.startsWith('.github/') || name.startsWith('.githooks/') || name.startsWith('.agent/')) return false;
+              if (docRe.test(name) || name.startsWith('.changelog/')) return false;
+              return codeRe.test(name) || /^(src|test|tests|lib|bin|scripts)\//.test(name);
+            });
+
+            core.setOutput('docs-only', String(docsOnly));
+            core.setOutput('run-ci', String(packageTouched || codeTouched));
+            core.setOutput('run-dependency-review', String(packageTouched));
+            core.setOutput('run-workflow-validation', String(workflowOrHook));
+            core.setOutput('run-policy-validation', String(policy));
+            core.setOutput('files-summary', names.slice(0, 30).join('\n'));
+
+  pr-contract:
+    name: pr contract
+    needs: detect
+    if: inputs.run-pr-contract && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Enforce PR policy
+        uses: actions/github-script@v7
+        env:
+          DOCS_ONLY: ${{ needs.detect.outputs.docs-only }}
+          BRANCH_PATTERN: ${{ inputs.branch-pattern }}
+          REQUIRE_LINKED_ISSUE: ${{ inputs.require-linked-issue }}
+          REQUIRE_VERIFICATION_SECTION: ${{ inputs.require-verification-section }}
+          REQUIRE_CHECKED_BOX: ${{ inputs.require-checked-box }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (pr.draft) {
+              core.info('Draft PR; pr contract is advisory until ready_for_review.');
+              return;
+            }
+
+            const failures = [];
+            const branch = pr.head.ref || '';
+            const branchRe = new RegExp(process.env.BRANCH_PATTERN);
+            if (!branchRe.test(branch)) {
+              failures.push(`Head branch \`${branch}\` does not match required pattern.`);
+            }
+
+            if (!/^(feat|fix|refactor|test|docs|style|chore|perf|ci|build|revert)(\([^)]+\))?: .+/.test(pr.title || '')) {
+              failures.push('PR title must use Conventional Commits format.');
+            }
+
+            const docsOnly = process.env.DOCS_ONLY === 'true';
+            if (!docsOnly) {
+              const body = pr.body || '';
+              if (process.env.REQUIRE_LINKED_ISSUE === 'true' && !/(Closes|Fixes|Refs)\s+#\d+/i.test(body)) {
+                failures.push('PR body must link an issue with `Closes #N`, `Fixes #N`, or `Refs #N`.');
+              }
+              if (process.env.REQUIRE_VERIFICATION_SECTION === 'true' && !(/##\s+Verification/i.test(body) && /###\s+Verification Notes/i.test(body))) {
+                failures.push('PR body must include `## Verification` and `### Verification Notes` sections.');
+              }
+              if (process.env.REQUIRE_CHECKED_BOX === 'true' && !/-\s+\[[xX]\]/.test(body)) {
+                failures.push('PR body must record completed verification with at least one checked checkbox.');
+              }
+            }
+
+            if (failures.length) core.setFailed(failures.join('\n'));
+
+  workflow-validation:
+    name: workflow and hook validation
+    needs: detect
+    if: inputs.run-workflow-validation && needs.detect.outputs.run-workflow-validation == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run actionlint
+        if: ${{ hashFiles('.github/workflows/*.yml', '.github/workflows/*.yaml') != '' }}
+        uses: raven-actions/actionlint@v2
+        with:
+          version: 1.7.7
+          fail-on-error: true
+      - name: Syntax-check git hooks
+        shell: bash
+        run: |
+          if [ -d .githooks ]; then
+            while IFS= read -r -d '' file; do
+              case "$file" in
+                *.sample) continue ;;
+              esac
+              first_line="$(head -n 1 "$file" || true)"
+              if [[ "$first_line" == "#!"*sh* ]] || [[ "$file" == *.sh ]]; then
+                bash -n "$file"
+              fi
+            done < <(find .githooks -type f -print0)
+          fi
+
+  policy-validation:
+    name: policy validation
+    needs: detect
+    if: inputs.run-policy-validation && needs.detect.outputs.run-policy-validation == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate check map
+        shell: bash
+        run: |
+          if [ -f .agent/check-map.yml ]; then
+            grep -Eq '^version: [0-9]+' .agent/check-map.yml
+            grep -Eq '^required_gate:' .agent/check-map.yml
+            grep -Eq '^[[:space:]]+check_name: repo-required-gate / decision' .agent/check-map.yml
+          fi
+
+  dependency-review:
+    name: dependency review
+    needs: detect
+    if: inputs.run-dependency-review && github.event_name == 'pull_request' && needs.detect.outputs.run-dependency-review == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Dependency review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          fail-on-scopes: runtime
+          comment-summary-in-pr: on-failure
+
+  node-ci:
+    name: node ci
+    needs: detect
+    if: inputs.stack == 'node' && needs.detect.outputs.run-ci == 'true'
+    uses: ArchonVII/github-workflows/.github/workflows/node-ci.yml@v1
+    with:
+      node-versions: ${{ inputs.node-versions }}
+      os-matrix: ${{ inputs.os-matrix }}
+      working-directory: ${{ inputs.working-directory }}
+      lint-script: ${{ inputs.npm-lint-script }}
+      typecheck-script: ${{ inputs.npm-typecheck-script }}
+      test-script: ${{ inputs.npm-test-script }}
+      build-script: ${{ inputs.npm-build-script }}
+
+  python-ci:
+    name: python ci
+    needs: detect
+    if: inputs.stack == 'python' && needs.detect.outputs.run-ci == 'true'
+    uses: ArchonVII/github-workflows/.github/workflows/python-ci.yml@v1
+    with:
+      python-versions: ${{ inputs.python-versions }}
+      os-matrix: ${{ inputs.os-matrix }}
+      working-directory: ${{ inputs.working-directory }}
+      use-uv: ${{ inputs.python-use-uv }}
+      lint-command: ${{ inputs.python-lint-command }}
+      format-check-command: ${{ inputs.python-format-check-command }}
+      typecheck-command: ${{ inputs.python-typecheck-command }}
+      test-command: ${{ inputs.python-test-command }}
+
+  decision:
+    name: decision
+    needs:
+      - detect
+      - pr-contract
+      - workflow-validation
+      - policy-validation
+      - dependency-review
+      - node-ci
+      - python-ci
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide required gate
+        shell: bash
+        env:
+          STACK: ${{ inputs.stack }}
+          RUN_CI: ${{ needs.detect.outputs.run-ci }}
+          RUN_DEPENDENCY_REVIEW: ${{ needs.detect.outputs.run-dependency-review }}
+          RUN_WORKFLOW_VALIDATION: ${{ needs.detect.outputs.run-workflow-validation }}
+          RUN_POLICY_VALIDATION: ${{ needs.detect.outputs.run-policy-validation }}
+          DETECT_RESULT: ${{ needs.detect.result }}
+          CONTRACT_RESULT: ${{ needs.pr-contract.result }}
+          WORKFLOW_RESULT: ${{ needs.workflow-validation.result }}
+          POLICY_RESULT: ${{ needs.policy-validation.result }}
+          DEPENDENCY_RESULT: ${{ needs.dependency-review.result }}
+          NODE_RESULT: ${{ needs.node-ci.result }}
+          PYTHON_RESULT: ${{ needs.python-ci.result }}
+        run: |
+          set -euo pipefail
+
+          failed=0
+          require_success() {
+            local name="$1"
+            local result="$2"
+            if [ "$result" != "success" ]; then
+              echo "::error::$name required but result was $result"
+              failed=1
+            fi
+          }
+
+          require_success "detect changes" "$DETECT_RESULT"
+
+          if [ "${{ inputs.run-pr-contract }}" = "true" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
+            require_success "pr contract" "$CONTRACT_RESULT"
+          fi
+
+          if [ "$RUN_WORKFLOW_VALIDATION" = "true" ]; then
+            require_success "workflow and hook validation" "$WORKFLOW_RESULT"
+          fi
+
+          if [ "$RUN_POLICY_VALIDATION" = "true" ]; then
+            require_success "policy validation" "$POLICY_RESULT"
+          fi
+
+          if [ "$RUN_DEPENDENCY_REVIEW" = "true" ]; then
+            require_success "dependency review" "$DEPENDENCY_RESULT"
+          fi
+
+          if [ "$RUN_CI" = "true" ]; then
+            case "$STACK" in
+              node) require_success "node ci" "$NODE_RESULT" ;;
+              python) require_success "python ci" "$PYTHON_RESULT" ;;
+              minimal)
+                echo "::error::code/package changes require Node or Python CI; stack=minimal is only for docs/config repos"
+                failed=1
+                ;;
+              *)
+                echo "::error::unknown stack '$STACK'; expected node, python, or minimal"
+                failed=1
+                ;;
+            esac
+          fi
+
+          if [ "$failed" -ne 0 ]; then
+            exit 1
+          fi
+
+          echo "repo-required-gate passed"
