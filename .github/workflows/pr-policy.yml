@@ -178,6 +178,7 @@ jobs:
           DOC_EXT_LIST: ${{ inputs.doc-only-extensions }}
           DOC_PREFIXES: ${{ inputs.doc-only-path-prefixes }}
           ENFORCE_EVIDENCE: ${{ inputs.enforce-evidence }}
+          WORKFLOW_LIBRARY_REF: ${{ inputs.workflow-library-ref }}
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -240,13 +241,34 @@ jobs:
             const headCommitTime = headCommit.data.committer.date;
 
             // Dynamic-import the pure parser so this step has no module wiring.
+            // Wrap the import in try/catch so a missing parser file (e.g.
+            // checkout skipped, or workflow-library-ref points at a pre-parser
+            // ref) degrades to a job-summary warning instead of an unhandled
+            // step failure. Phase 1 is warning-only — even when
+            // enforce-evidence is true, a missing parser is an ecosystem
+            // config problem (wrong ref/permissions) not a PR-author
+            // problem, so we still emit core.warning, never
+            // core.setFailed. Source: PR #19 adversarial review
+            // (2026-05-20), finding M2.
             const path = require('path');
             const url = require('url');
             const parserPath = path.resolve(
               process.env.GITHUB_WORKSPACE,
               '__github-workflows__/scripts/parse-evidence.mjs',
             );
-            const { parseEvidence } = await import(url.pathToFileURL(parserPath).href);
+            const workflowRef = process.env.WORKFLOW_LIBRARY_REF || '(unset)';
+            let parseEvidence;
+            try {
+              ({ parseEvidence } = await import(url.pathToFileURL(parserPath).href));
+            } catch (err) {
+              const msg = `Could not load evidence parser at ${parserPath} (workflow-library-ref=${workflowRef}): ${err && err.message ? err.message : err}. Evidence check skipped.`;
+              core.warning(msg);
+              await summary
+                .addHeading('Evidence check (skipped)', 3)
+                .addRaw(msg)
+                .write();
+              return;
+            }
 
             const result = parseEvidence(pr.body || '', {
               headCommitTime,
