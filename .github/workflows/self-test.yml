@@ -1,0 +1,43 @@
+name: Self-test (scripts)
+
+# Non-reusable workflow that runs the github-workflows repo's own unit
+# tests when scripts/** changes on a PR or push to main. Other reusable
+# workflows in this repo are workflow_call-only and don't run here.
+
+on:
+  pull_request:
+    paths:
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/self-test.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/self-test.yml"
+
+concurrency:
+  group: self-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vitest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Run vitest
+        run: npm test
