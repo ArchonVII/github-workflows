@@ -69,7 +69,18 @@ jobs:
   policy:
     runs-on: ubuntu-latest
     permissions:
+      # `pull-requests: read` — read PR body, files, draft state.
+      # `checks: read` — required by the evidence parser's `location: ci`
+      #   handling, which calls `checks.listForRef` for the PR head SHA.
+      # `contents: read` — required to fetch the head commit via
+      #   `git.getCommit` for the parser's freshness/now comparison, and
+      #   for `actions/checkout` of this workflow's repo for the parser
+      #   script. When `permissions:` is declared, anything unlisted
+      #   becomes `none` — so both must be explicit. Source: PR #19
+      #   adversarial review (2026-05-20), finding C2.
       pull-requests: read
+      checks: read
+      contents: read
     steps:
       # Check out THIS reusable workflow's repo (ArchonVII/github-workflows)
       # into a sibling path so the evidence-check step can dynamic-import
