@@ -24,6 +24,10 @@ const LOCAL_TOKENS = [
   'npm', 'pnpm', 'yarn', 'pytest', 'uv', 'python', 'node', 'gh', 'git',
   'npx', 'actionlint', 'tsc', 'eslint', 'ruff', 'cargo', 'go', 'make',
   'bash', 'pwsh', 'deno', 'vitest',
+  // Shell utility tokens — added 2026-05-20 per PR #19 review patch 1.
+  // Guards against dogfood regression where a `grep` evidence row would
+  // hard-fail under enforce mode.
+  'grep', 'awk', 'sed', 'jq',
 ];
 
 const VALID_LOCATIONS = new Set(['ci', 'local', 'manual']);
