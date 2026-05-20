@@ -94,7 +94,20 @@ jobs:
       # match. Without an explicit ref, actions/checkout would default to
       # the repository's default branch (main), creating "workflow from v1,
       # parser from main" drift.
+      # Skip the parser checkout for draft PRs — the evidence-check step
+      # early-returns for drafts (see the `pr.draft` block below) so the
+      # parser is never invoked, and the ~5-10s clone is pure waste.
+      #
+      # We do NOT also skip for doc-only PRs at this stage: doc-only
+      # detection requires `pulls.listFiles` (an API call) which can't
+      # be evaluated at `if:`-expression time without a preceding step.
+      # The doc-only short-circuit still fires inside the evidence step;
+      # we just pay the checkout cost. Future refactor: an explicit
+      # "classify PR" step that exports outputs for both subsequent
+      # steps to gate on. Source: PR #19 adversarial review
+      # (2026-05-20), finding M1.
       - name: Check out github-workflows for parser script
+        if: github.event.pull_request.draft == false
         uses: actions/checkout@v4
         with:
           repository: ArchonVII/github-workflows
