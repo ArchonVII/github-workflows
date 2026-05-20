@@ -214,6 +214,21 @@ describe('parseEvidence — timestamp validation', () => {
     expect(r.warnings.some((w) => /Unchecked/.test(w))).toBe(true);
   });
 
+  it('16. local with grep command — passes (regression: PR #19 dogfood)', () => {
+    // Source: PR #19 review patch 1 (2026-05-20). Guards against the dogfood
+    // regression where `grep -nE "ERROR" build.log` would hard-fail under
+    // enforce mode because `grep` wasn't in LOCAL_TOKENS.
+    const body = withEvidence('Log scanned for errors', [
+      'command: grep -nE "ERROR" build.log',
+      'location: local',
+      'result: pass: 0 matches',
+      'timestamp: 2026-05-19T12:30:00Z',
+    ]);
+    const r = parseEvidence(body, baseCtx());
+    expect(r.errors).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
   it('15. invalid ISO timestamp — error', () => {
     const body = withEvidence('Tests pass', [
       'command: npm test',
