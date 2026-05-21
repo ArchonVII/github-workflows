@@ -36,7 +36,7 @@ Companion repos:
 
 | Workflow                                           | Purpose                                                                                                                                    | Example                                            |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
-| [`repo-required-gate.yml`](.github/workflows/repo-required-gate.yml) | Always-reporting PR gate for branch protection. Detects changed files, runs relevant internal checks, and exposes one stable `repo-required-gate / decision` check. | [`examples/repo-required-gate.yml`](examples/repo-required-gate.yml) |
+| [`repo-required-gate.yml`](.github/workflows/repo-required-gate.yml) | Always-reporting PR gate for branch protection. Detects changed files, runs relevant internal checks, and exposes one stable `repo-required-gate / decision` check. Doc-only PRs short-circuit and skip optional checks/CI. | [`examples/repo-required-gate.yml`](examples/repo-required-gate.yml) |
 | [`node-ci.yml`](.github/workflows/node-ci.yml)     | Install + lint + typecheck + test for Node projects. Auto-detects `npm` / `pnpm` / `yarn` from lockfile. Matrix over Node versions and OS. | [`examples/node-ci.yml`](examples/node-ci.yml)     |
 | [`python-ci.yml`](.github/workflows/python-ci.yml) | Install (uv or pip) + ruff lint + ruff format-check + pyright + pytest. Each step opt-out. Matrix over Python versions and OS.             | [`examples/python-ci.yml`](examples/python-ci.yml) |
 

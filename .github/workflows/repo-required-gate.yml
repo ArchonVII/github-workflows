@@ -130,13 +130,16 @@ jobs:
             const workflowOrHook = names.some((name) =>
               name.startsWith('.github/workflows/') || name.startsWith('.githooks/')
             );
+            // "Policy validation" is intentionally narrow: it only validates
+            // the .agent check-map contract today, so avoid routing doc-only
+            // PRs (e.g. .github/*.md) into extra gate jobs.
             const policy = names.some((name) =>
               name === 'AGENTS.md' ||
               name === 'CLAUDE.md' ||
               name === 'GEMINI.md' ||
               name === '.agent/check-map.yml' ||
               name.startsWith('.agent/schema/') ||
-              name.startsWith('.github/')
+              name.startsWith('.agent/')
             );
             const packageTouched = names.some((name) => packageRe.test(name));
             const codeTouched = names.some((name) => {
@@ -146,10 +149,10 @@ jobs:
             });
 
             core.setOutput('docs-only', String(docsOnly));
-            core.setOutput('run-ci', String(packageTouched || codeTouched));
-            core.setOutput('run-dependency-review', String(packageTouched));
-            core.setOutput('run-workflow-validation', String(workflowOrHook));
-            core.setOutput('run-policy-validation', String(policy));
+            core.setOutput('run-ci', String(!docsOnly && (packageTouched || codeTouched)));
+            core.setOutput('run-dependency-review', String(!docsOnly && packageTouched));
+            core.setOutput('run-workflow-validation', String(!docsOnly && workflowOrHook));
+            core.setOutput('run-policy-validation', String(!docsOnly && policy));
             core.setOutput('files-summary', names.slice(0, 30).join('\n'));
 
   pr-contract:
