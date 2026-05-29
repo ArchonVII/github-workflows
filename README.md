@@ -17,7 +17,7 @@ Companion repos:
 
 | Workflow                                                             | Purpose                                                                                                                                       | Example                                                              |
 | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [`pr-policy.yml`](.github/workflows/pr-policy.yml)                   | Enforce PR body has `## Verification` / `### Verification Notes` / a checked box / a linked issue. Doc-only PRs skip. Also runs `actionlint`. | [`examples/pr-policy.yml`](examples/pr-policy.yml)                   |
+| [`pr-policy.yml`](.github/workflows/pr-policy.yml)                   | Enforce PR body has `## Verification` / `### Verification Notes` / a checked box / a linked issue. Doc-only PRs skip that ceremony. Also warns on role-separation concerns and can hard-gate protected agent PR paths. Also runs `actionlint`. | [`examples/pr-policy.yml`](examples/pr-policy.yml)                   |
 | [`pr-body-autoinject.yml`](.github/workflows/pr-body-autoinject.yml) | When a bot opens a non-doc PR with a freehand body, prepend a stub that satisfies `pr-policy`. Human PRs untouched.                           | [`examples/pr-body-autoinject.yml`](examples/pr-body-autoinject.yml) |
 | [`semantic-pr-title.yml`](.github/workflows/semantic-pr-title.yml)   | Enforce Conventional Commits format on PR titles. Wraps `amannn/action-semantic-pull-request@v5`.                                             | [`examples/semantic-pr-title.yml`](examples/semantic-pr-title.yml)   |
 | [`branch-naming.yml`](.github/workflows/branch-naming.yml)           | Enforce the `open`-skill branch convention (`agent/<tool>/<issue>-<slug>` or `<type>/<slug>`). Configurable regex.                            | [`examples/branch-naming.yml`](examples/branch-naming.yml)           |
@@ -81,7 +81,38 @@ permissions:
 jobs:
   policy:
     uses: ArchonVII/github-workflows/.github/workflows/pr-policy.yml@v1
+    # Optional: fail agent-managed PRs touching protected paths unless an
+    # independent approval or non-author Release-Admiral marker is present.
+    # Defaults are warning-only per ArchonVII/.github#14.
+    # with:
+    #   enforce-role-separation: true
 ```
+
+### PR role-separation policy
+
+`pr-policy.yml` includes the F7 role-separation check from
+[`ArchonVII/.github#14`](https://github.com/ArchonVII/.github/issues/14).
+By default, the workflow emits warnings when PR metadata suggests the same
+account both authored and is preparing to close agent-managed work. This is not
+a universal hard block because the ArchonVII solo-owner workflow permits Joseph
+to be the human merging account for legitimate work.
+
+Consumers that want scoped hard enforcement can set:
+
+```yaml
+with:
+  enforce-role-separation: true
+```
+
+When enabled, agent-managed PRs touching protected paths must have either an
+independent approving review or a PR-body marker such as
+`Release-Admiral: @reviewer-name`, where the marker names a non-author. The
+default protected path set covers `.github/**`, `.githooks/**`, `.agent/**`,
+agent authority docs, package manifests/locks, `src/**`, and `scripts/**`. Use
+`role-protected-paths` to override that list.
+
+The Owner Maintenance Lane is direct-commit-only and intentionally has no PR
+exemption here. Dependabot auto-merge is the explicit exception.
 
 ---
 

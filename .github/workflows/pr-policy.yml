@@ -57,13 +57,48 @@ on:
       workflow-library-ref:
         description: |
           Git ref (tag, branch, or SHA) of ArchonVII/github-workflows used to
-          source scripts/parse-evidence.mjs. MUST match the ref the caller
+          source policy helper scripts. MUST match the ref the caller
           pins this reusable workflow to (e.g. @v1). Defaulting to v1 keeps
           parser+workflow versioned together; callers using @main or a SHA
           should pass workflow-library-ref to match. Source: PR #19 review
           patch 2 (2026-05-20).
         type: string
         default: v1
+      role-separation-warnings:
+        description: |
+          Emit warnings when PR metadata suggests the same account authored
+          and is preparing to close agent-managed work. This is warning-only
+          by default per ArchonVII/.github#14: same-account identity is not a
+          universal hard block in a solo-owner ecosystem.
+        type: boolean
+        default: true
+      enforce-role-separation:
+        description: |
+          Hard-fail agent-managed PRs that touch protected paths unless an
+          independent approval or non-author Release-Admiral marker is present.
+          Defaults false so consumers opt into the scoped hard block after
+          adopting the role policy.
+        type: boolean
+        default: false
+      role-protected-paths:
+        description: |
+          Newline-separated path patterns that require independent
+          Release-Admiral closure when enforce-role-separation is true.
+          Supports exact paths, trailing / prefixes, and trailing /** prefixes.
+        type: string
+        default: |
+          .github/**
+          .githooks/**
+          .agent/**
+          AGENTS.md
+          CLAUDE.md
+          GEMINI.md
+          package.json
+          package-lock.json
+          pnpm-lock.yaml
+          yarn.lock
+          src/**
+          scripts/**
 
 jobs:
   policy:
@@ -83,8 +118,8 @@ jobs:
       contents: read
     steps:
       # Check out THIS reusable workflow's repo (ArchonVII/github-workflows)
-      # into a sibling path so the evidence-check step can dynamic-import
-      # scripts/parse-evidence.mjs. We deliberately don't check out the caller
+      # into a sibling path so policy steps can dynamic-import helper scripts
+      # from scripts/*.mjs. We deliberately don't check out the caller
       # repo here — the existing policy step uses the GitHub API and doesn't
       # need a working tree.
       #
@@ -106,7 +141,7 @@ jobs:
       # "classify PR" step that exports outputs for both subsequent
       # steps to gate on. Source: PR #19 adversarial review
       # (2026-05-20), finding M1.
-      - name: Check out github-workflows for parser script
+      - name: Check out github-workflows for policy helper scripts
         if: github.event.pull_request.draft == false
         uses: actions/checkout@v4
         with:
@@ -174,6 +209,123 @@ jobs:
 
             if (failures.length > 0) {
               core.setFailed(failures.join('\n'));
+            }
+
+      # ----------------------------------------------------------------------
+      # F7 role-separation policy (amendment 2026-05-28).
+      #
+      # Same-account author/merger identity is a soft warning by default, not a
+      # universal hard block. Callers may opt into scoped hard enforcement for
+      # agent-managed PRs touching protected paths via enforce-role-separation.
+      #
+      # Owner Maintenance Lane is direct-commit-only and never produces a PR, so
+      # it cannot reach this workflow. No PR-path exemption is implemented here
+      # on purpose.
+      # ----------------------------------------------------------------------
+      - name: Role separation check
+        if: inputs.role-separation-warnings || inputs.enforce-role-separation
+        uses: actions/github-script@v7
+        env:
+          ENFORCE_ROLE_SEPARATION: ${{ inputs.enforce-role-separation }}
+          ROLE_PROTECTED_PATHS: ${{ inputs.role-protected-paths }}
+          WORKFLOW_LIBRARY_REF: ${{ inputs.workflow-library-ref }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const summary = core.summary;
+
+            if (pr.draft) {
+              core.info('Draft PR; role-separation policy is advisory until draft is cleared.');
+              await summary
+                .addHeading('Role separation check (advisory)', 3)
+                .addRaw('Draft PR — role-separation check skipped.')
+                .write();
+              return;
+            }
+
+            const path = require('path');
+            const url = require('url');
+            const helperPath = path.resolve(
+              process.env.GITHUB_WORKSPACE,
+              '__github-workflows__/scripts/role-policy.mjs',
+            );
+            const workflowRef = process.env.WORKFLOW_LIBRARY_REF || '(unset)';
+            let evaluateRolePolicy;
+            try {
+              ({ evaluateRolePolicy } = await import(url.pathToFileURL(helperPath).href));
+            } catch (err) {
+              const msg = `Could not load role policy helper at ${helperPath} (workflow-library-ref=${workflowRef}): ${err && err.message ? err.message : err}. Role separation check skipped.`;
+              core.warning(msg);
+              await summary
+                .addHeading('Role separation check (skipped)', 3)
+                .addRaw(msg)
+                .write();
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const result = evaluateRolePolicy({
+              prAuthor: pr.user && pr.user.login ? pr.user.login : '',
+              headRef: pr.head && pr.head.ref ? pr.head.ref : '',
+              files: files.map((f) => f.filename),
+              commitAuthors: commits.map((c) =>
+                c.author && c.author.login
+                  ? c.author.login
+                  : c.commit && c.commit.author && c.commit.author.name
+                    ? c.commit.author.name
+                    : '',
+              ),
+              approvedReviewAuthors: reviews
+                .filter((r) => r.state === 'APPROVED')
+                .map((r) => (r.user && r.user.login ? r.user.login : '')),
+              body: pr.body || '',
+              labels: (pr.labels || []).map((l) => l.name),
+              enforceRoleSeparation: process.env.ENFORCE_ROLE_SEPARATION === 'true',
+              protectedPathPatterns: process.env.ROLE_PROTECTED_PATHS,
+            });
+
+            await summary.addHeading('Role separation check', 3).write();
+            if (result.protectedPaths.length > 0) {
+              await summary
+                .addHeading('Protected paths touched', 4)
+                .addList(result.protectedPaths)
+                .write();
+            }
+            if (result.warnings.length > 0) {
+              await summary
+                .addHeading('Warnings', 4)
+                .addList(result.warnings)
+                .write();
+              for (const warning of result.warnings) core.warning(`role-policy: ${warning}`);
+            }
+            if (result.errors.length > 0) {
+              await summary
+                .addHeading('Errors', 4)
+                .addList(result.errors)
+                .write();
+              core.setFailed(result.errors.join('\n'));
+              return;
+            }
+            if (result.warnings.length === 0 && result.errors.length === 0) {
+              await summary.addRaw('No role-separation concerns detected.').write();
             }
 
       # ----------------------------------------------------------------------
