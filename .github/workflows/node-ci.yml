@@ -44,9 +44,13 @@ on:
         type: string
         default: ""
       cache:
-        description: "actions/setup-node cache: npm, pnpm, yarn, or empty to disable."
+        description: "actions/setup-node cache: auto, npm, pnpm, yarn, or empty to disable."
         type: string
-        default: "npm"
+        default: "auto"
+      pnpm-version:
+        description: "pnpm version installed when pnpm-lock.yaml is detected."
+        type: string
+        default: "10"
 
 jobs:
   ci:
@@ -64,29 +68,107 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: ${{ inputs.cache }}
-
       - name: Detect package manager
         id: pm
         shell: bash
         run: |
-          if [ -n "${{ inputs.install-command }}" ]; then
-            echo "install=${{ inputs.install-command }}" >> "$GITHUB_OUTPUT"
-            echo "run=npm run --if-present" >> "$GITHUB_OUTPUT"
-          elif [ -f pnpm-lock.yaml ]; then
-            npm install -g pnpm
-            echo "install=pnpm install --frozen-lockfile" >> "$GITHUB_OUTPUT"
-            echo "run=pnpm run --if-present" >> "$GITHUB_OUTPUT"
-          elif [ -f yarn.lock ]; then
-            echo "install=yarn install --frozen-lockfile" >> "$GITHUB_OUTPUT"
-            echo "run=yarn run" >> "$GITHUB_OUTPUT"
-          else
-            echo "install=npm ci" >> "$GITHUB_OUTPUT"
-            echo "run=npm run --if-present" >> "$GITHUB_OUTPUT"
+          cache_input="${{ inputs.cache }}"
+          lock_prefix=""
+          if [ "${{ inputs.working-directory }}" != "." ]; then
+            lock_prefix="${{ inputs.working-directory }}/"
           fi
+
+          if [ -f pnpm-lock.yaml ]; then
+            manager="pnpm"
+            install="pnpm install --frozen-lockfile"
+            run="pnpm run --if-present"
+            default_cache="pnpm"
+            cache_dependency_path="${lock_prefix}pnpm-lock.yaml"
+          elif [ -f yarn.lock ]; then
+            manager="yarn"
+            install="yarn install --frozen-lockfile"
+            run="yarn run"
+            default_cache="yarn"
+            cache_dependency_path="${lock_prefix}yarn.lock"
+          elif [ -f package-lock.json ]; then
+            manager="npm"
+            install="npm ci"
+            run="npm run --if-present"
+            default_cache="npm"
+            cache_dependency_path="${lock_prefix}package-lock.json"
+          else
+            manager="npm"
+            install="npm ci"
+            run="npm run --if-present"
+            default_cache=""
+            cache_dependency_path=""
+          fi
+
+          if [ -n "${{ inputs.install-command }}" ]; then
+            install="${{ inputs.install-command }}"
+          fi
+
+          case "$cache_input" in
+            auto)
+              cache="$default_cache"
+              ;;
+            "")
+              cache=""
+              cache_dependency_path=""
+              ;;
+            npm|pnpm|yarn)
+              cache="$cache_input"
+              ;;
+            *)
+              echo "::error::cache input must be auto, npm, pnpm, yarn, or empty"
+              exit 1
+              ;;
+          esac
+
+          if [ -n "$cache" ] && [ "$cache" != "$default_cache" ]; then
+            case "$cache" in
+              npm)
+                if [ -f package-lock.json ]; then
+                  cache_dependency_path="${lock_prefix}package-lock.json"
+                else
+                  cache_dependency_path=""
+                fi
+                ;;
+              pnpm)
+                if [ -f pnpm-lock.yaml ]; then
+                  cache_dependency_path="${lock_prefix}pnpm-lock.yaml"
+                else
+                  cache_dependency_path=""
+                fi
+                ;;
+              yarn)
+                if [ -f yarn.lock ]; then
+                  cache_dependency_path="${lock_prefix}yarn.lock"
+                else
+                  cache_dependency_path=""
+                fi
+                ;;
+            esac
+          fi
+
+          echo "manager=$manager" >> "$GITHUB_OUTPUT"
+          echo "install=$install" >> "$GITHUB_OUTPUT"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "cache=$cache" >> "$GITHUB_OUTPUT"
+          echo "cache-dependency-path=$cache_dependency_path" >> "$GITHUB_OUTPUT"
+
+      - name: Set up pnpm
+        if: steps.pm.outputs.manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: ${{ steps.pm.outputs.cache }}
+          cache-dependency-path: ${{ steps.pm.outputs.cache-dependency-path }}
 
       - name: Install
         shell: bash
