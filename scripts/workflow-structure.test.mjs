@@ -64,9 +64,37 @@ describe('repo-required-gate workflow node delegation', () => {
       expect(block, `${job} job exists`).not.toBe('');
       expect(block, `${job} waits for pr-contract`).toContain('pr-contract');
       expect(block, `${job} skips when pull-request contract failed`).toContain(
-        "github.event_name != 'pull_request' || needs.pr-contract.result == 'success'",
+        "needs.pr-contract.result == 'success'",
       );
     }
+  });
+
+  it('lets explicit pr-contract opt-outs continue to downstream jobs', () => {
+    const body = readWorkflow('repo-required-gate');
+
+    for (const job of [
+      'workflow-validation',
+      'policy-validation',
+      'dependency-review',
+      'node-ci',
+      'python-ci',
+      'snapshot-validation',
+    ]) {
+      const block = workflowJobBlock(body, job);
+
+      expect(block, `${job} respects run-pr-contract=false`).toContain(
+        "github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success'",
+      );
+    }
+  });
+
+  it('declares the doc-only inputs passed to the shared PR contract validator', () => {
+    const body = readWorkflow('repo-required-gate');
+
+    expect(body).toContain('doc-only-extensions:');
+    expect(body).toContain('doc-only-path-prefixes:');
+    expect(body).toContain('DOC_EXT_LIST: ${{ inputs.doc-only-extensions }}');
+    expect(body).toContain('DOC_PREFIXES: ${{ inputs.doc-only-path-prefixes }}');
   });
 });
 

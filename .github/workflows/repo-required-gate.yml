@@ -54,6 +54,15 @@ on:
       require-checked-box:
         type: boolean
         default: true
+      doc-only-extensions:
+        description: "Pipe-separated extensions (no dots) considered doc-only for the PR contract."
+        type: string
+        default: "md|txt|png|jpg|jpeg|gif|svg|webp|bmp|ico|avif"
+      doc-only-path-prefixes:
+        description: "Newline-separated path prefixes also treated as doc-only for the PR contract."
+        type: string
+        default: |
+          .changelog/
       run-pr-contract:
         type: boolean
         default: true
@@ -409,7 +418,7 @@ jobs:
     needs:
       - detect
       - pr-contract
-    if: always() && inputs.run-workflow-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-workflow-validation == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
+    if: always() && inputs.run-workflow-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-workflow-validation == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -441,7 +450,7 @@ jobs:
     needs:
       - detect
       - pr-contract
-    if: always() && inputs.run-policy-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-policy-validation == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
+    if: always() && inputs.run-policy-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-policy-validation == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -461,7 +470,7 @@ jobs:
     needs:
       - detect
       - pr-contract
-    if: always() && inputs.run-dependency-review && github.event_name == 'pull_request' && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-dependency-review == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
+    if: always() && inputs.run-dependency-review && github.event_name == 'pull_request' && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-dependency-review == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -480,7 +489,7 @@ jobs:
     needs:
       - detect
       - pr-contract
-    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-node-ci == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
+    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-node-ci == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
     uses: ArchonVII/github-workflows/.github/workflows/node-ci.yml@v1
     with:
       node-versions: ${{ inputs.node-versions }}
@@ -497,7 +506,7 @@ jobs:
     needs:
       - detect
       - pr-contract
-    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-python-ci == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
+    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-python-ci == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
     uses: ArchonVII/github-workflows/.github/workflows/python-ci.yml@v1
     with:
       python-versions: ${{ inputs.python-versions }}
@@ -514,7 +523,7 @@ jobs:
     needs:
       - detect
       - pr-contract
-    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-snapshot-validation == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
+    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-snapshot-validation == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
