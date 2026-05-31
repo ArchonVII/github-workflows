@@ -295,55 +295,121 @@ jobs:
     if: inputs.run-pr-contract && github.event_name == 'pull_request' && needs.detect.outputs.ok == 'true'
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: read
+      contents: read
+      pull-requests: write
     steps:
+      - name: Check out github-workflows for PR contract validator
+        uses: actions/checkout@v4
+        with:
+          repository: ArchonVII/github-workflows
+          ref: ${{ inputs.workflow-library-ref }}
+          path: __github-workflows__
+
       - name: Enforce PR policy
         uses: actions/github-script@v7
         env:
-          DOCS_ONLY: ${{ needs.detect.outputs.docs-only }}
           BRANCH_PATTERN: ${{ inputs.branch-pattern }}
           REQUIRE_LINKED_ISSUE: ${{ inputs.require-linked-issue }}
           REQUIRE_VERIFICATION_SECTION: ${{ inputs.require-verification-section }}
           REQUIRE_CHECKED_BOX: ${{ inputs.require-checked-box }}
+          DOC_EXT_LIST: ${{ inputs.doc-only-extensions }}
+          DOC_PREFIXES: ${{ inputs.doc-only-path-prefixes }}
+          WORKFLOW_LIBRARY_REF: ${{ inputs.workflow-library-ref }}
         with:
           script: |
+            const path = require('path');
+            const url = require('url');
+
             const pr = context.payload.pull_request;
             if (pr.draft) {
               core.info('Draft PR; pr contract is advisory until ready_for_review.');
               return;
             }
 
-            const failures = [];
-            const branch = pr.head.ref || '';
-            const branchRe = new RegExp(process.env.BRANCH_PATTERN);
-            if (!branchRe.test(branch)) {
-              failures.push(`Head branch \`${branch}\` does not match required pattern.`);
+            const validatorPath = path.resolve(
+              process.env.GITHUB_WORKSPACE,
+              '__github-workflows__/scripts/pr-contract.mjs',
+            );
+            const ref = process.env.WORKFLOW_LIBRARY_REF || '(unset)';
+
+            let validatePrContract;
+            let formatPrContractResult;
+            try {
+              ({ validatePrContract, formatPrContractResult } = await import(url.pathToFileURL(validatorPath).href));
+            } catch (err) {
+              const msg = `Could not load PR contract validator at ${validatorPath} (workflow-library-ref=${ref}): ${err && err.message ? err.message : err}.`;
+              core.setFailed(msg);
+              return;
             }
 
-            if (!/^(feat|fix|refactor|test|docs|style|chore|perf|ci|build|revert)(\([^)]+\))?: .+/.test(pr.title || '')) {
-              failures.push('PR title must use Conventional Commits format.');
-            }
+            const filesPaged = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
 
-            const docsOnly = process.env.DOCS_ONLY === 'true';
-            if (!docsOnly) {
-              const body = pr.body || '';
-              if (process.env.REQUIRE_LINKED_ISSUE === 'true' && !/(Closes|Fixes|Refs)\s+#\d+/i.test(body)) {
-                failures.push('PR body must link an issue with `Closes #N`, `Fixes #N`, or `Refs #N`.');
-              }
-              if (process.env.REQUIRE_VERIFICATION_SECTION === 'true' && !(/##\s+Verification/i.test(body) && /###\s+Verification Notes/i.test(body))) {
-                failures.push('PR body must include `## Verification` and `### Verification Notes` sections.');
-              }
-              if (process.env.REQUIRE_CHECKED_BOX === 'true' && !/-\s+\[[xX]\]/.test(body)) {
-                failures.push('PR body must record completed verification with at least one checked checkbox.');
-              }
-            }
+            const requireVerification = process.env.REQUIRE_VERIFICATION_SECTION === 'true';
+            const result = validatePrContract({
+              title: pr.title || '',
+              body: pr.body || '',
+              branch: pr.head.ref || '',
+              files: filesPaged.map((file) => file.filename),
+            }, {
+              branchPattern: process.env.BRANCH_PATTERN,
+              docOnlyExtensions: process.env.DOC_EXT_LIST,
+              docOnlyPathPrefixes: process.env.DOC_PREFIXES,
+              requireIssueLink: process.env.REQUIRE_LINKED_ISSUE === 'true',
+              requiredHeadings: requireVerification ? undefined : [],
+              requireSummary: requireVerification,
+              requireDocsChangelog: requireVerification,
+              requireSubstantiveVerificationNotes: requireVerification,
+              rejectGenericVerificationNotes: requireVerification,
+              requireCheckedVerification: process.env.REQUIRE_CHECKED_BOX === 'true',
+              requireEvidenceBlocks: process.env.REQUIRE_CHECKED_BOX === 'true',
+            });
 
-            if (failures.length) core.setFailed(failures.join('\n'));
+            const report = formatPrContractResult(result);
+            await core.summary
+              .addHeading(result.ok ? 'PR contract passed' : 'PR contract failed', 3)
+              .addCodeBlock(report, 'text')
+              .write();
+
+            if (!result.ok) {
+              const marker = '<!-- archon-pr-contract -->';
+              const repairBody = [
+                marker,
+                '',
+                report,
+                '',
+                'Run locally:',
+                '',
+                '```bash',
+                `npm run pr:contract -- --repo ${context.repo.owner}/${context.repo.repo} --pr ${pr.number}`,
+                '```',
+              ].join('\n');
+
+              try {
+                await github.rest.pulls.createReview({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  event: 'COMMENT',
+                  body: repairBody,
+                });
+              } catch (err) {
+                core.warning(`Could not post PR contract repair comment: ${err && err.message ? err.message : err}`);
+              }
+
+              core.setFailed(report);
+            }
 
   workflow-validation:
     name: workflow and hook validation
-    needs: detect
-    if: inputs.run-workflow-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-workflow-validation == 'true'
+    needs:
+      - detect
+      - pr-contract
+    if: always() && inputs.run-workflow-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-workflow-validation == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -372,8 +438,10 @@ jobs:
 
   policy-validation:
     name: policy validation
-    needs: detect
-    if: inputs.run-policy-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-policy-validation == 'true'
+    needs:
+      - detect
+      - pr-contract
+    if: always() && inputs.run-policy-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-policy-validation == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -390,8 +458,10 @@ jobs:
 
   dependency-review:
     name: dependency review
-    needs: detect
-    if: inputs.run-dependency-review && github.event_name == 'pull_request' && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-dependency-review == 'true'
+    needs:
+      - detect
+      - pr-contract
+    if: always() && inputs.run-dependency-review && github.event_name == 'pull_request' && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-dependency-review == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -407,8 +477,10 @@ jobs:
 
   node-ci:
     name: node ci
-    needs: detect
-    if: needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-node-ci == 'true'
+    needs:
+      - detect
+      - pr-contract
+    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-node-ci == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
     uses: ArchonVII/github-workflows/.github/workflows/node-ci.yml@v1
     with:
       node-versions: ${{ inputs.node-versions }}
@@ -422,8 +494,10 @@ jobs:
 
   python-ci:
     name: python ci
-    needs: detect
-    if: needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-python-ci == 'true'
+    needs:
+      - detect
+      - pr-contract
+    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-python-ci == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
     uses: ArchonVII/github-workflows/.github/workflows/python-ci.yml@v1
     with:
       python-versions: ${{ inputs.python-versions }}
@@ -437,8 +511,10 @@ jobs:
 
   snapshot-validation:
     name: snapshot validation
-    needs: detect
-    if: needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-snapshot-validation == 'true'
+    needs:
+      - detect
+      - pr-contract
+    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-snapshot-validation == 'true' && (github.event_name != 'pull_request' || needs.pr-contract.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read

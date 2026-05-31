@@ -3,6 +3,16 @@ import { describe, expect, it } from 'vitest';
 
 const readWorkflow = (name) => readFileSync(`.github/workflows/${name}.yml`, 'utf8');
 
+const workflowJobBlock = (body, job) => {
+  const marker = `  ${job}:`;
+  const jobIndex = body.indexOf(marker);
+  if (jobIndex === -1) return '';
+
+  const rest = body.slice(jobIndex + marker.length);
+  const nextJob = rest.search(/\r?\n  [a-zA-Z0-9_-]+:\r?\n/);
+  return body.slice(jobIndex, nextJob === -1 ? body.length : jobIndex + marker.length + nextJob);
+};
+
 describe('node-ci workflow package-manager setup', () => {
   it('detects the lockfile before setup-node configures dependency caching', () => {
     const body = readWorkflow('node-ci');
@@ -36,5 +46,45 @@ describe('repo-required-gate workflow node delegation', () => {
 
     expect(body).toContain('pnpm-version: ${{ inputs.pnpm-version }}');
     expect(body).not.toContain('cache: "npm"');
+  });
+
+  it('gates expensive PR jobs on the cheap PR contract', () => {
+    const body = readWorkflow('repo-required-gate');
+
+    for (const job of [
+      'workflow-validation',
+      'policy-validation',
+      'dependency-review',
+      'node-ci',
+      'python-ci',
+      'snapshot-validation',
+    ]) {
+      const block = workflowJobBlock(body, job);
+
+      expect(block, `${job} job exists`).not.toBe('');
+      expect(block, `${job} waits for pr-contract`).toContain('pr-contract');
+      expect(block, `${job} skips when pull-request contract failed`).toContain(
+        "github.event_name != 'pull_request' || needs.pr-contract.result == 'success'",
+      );
+    }
+  });
+});
+
+describe('pr-policy workflow contract source', () => {
+  it('uses the shared PR contract validator instead of inline body regexes', () => {
+    const body = readWorkflow('pr-policy');
+
+    expect(body).toContain('__github-workflows__/scripts/pr-contract.mjs');
+    expect(body).toContain('validatePrContract');
+  });
+});
+
+describe('pr-body-autoinject scaffold', () => {
+  it('does not inject checked verification that can satisfy the strict contract', () => {
+    const body = readWorkflow('pr-body-autoinject');
+
+    expect(body).toContain('TODO: Fill in summary.');
+    expect(body).toContain('- [ ] TODO: Run required verification and replace this line.');
+    expect(body).not.toContain('- [x] Automated CI checks green on this PR');
   });
 });

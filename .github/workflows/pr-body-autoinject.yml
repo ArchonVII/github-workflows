@@ -3,7 +3,8 @@ name: PR Body Auto-Inject (reusable)
 # Bot-authored PRs (Copilot SWE agent, GitHub Apps) freehand their bodies and
 # do not read .github/PULL_REQUEST_TEMPLATE.md, so they fail the pr-policy
 # Verification/Closes-N requirements. This workflow runs ONCE when a bot
-# opens a non-doc PR and prepends a minimal stub that satisfies pr-policy.
+# opens a non-doc PR and prepends a minimal scaffold. The scaffold is
+# intentionally invalid until the agent records real verification.
 # Human PRs are untouched.
 
 on:
@@ -77,19 +78,25 @@ jobs:
             const stub = [
               '<!-- AUTO-INJECTED policy stub for bot-authored PR. Replace freely. -->',
               '',
-              '## Linked Issue',
+              '## Summary',
               '',
-              `Closes ${issueRef}`,
+              'TODO: Fill in summary.',
               '',
               '## Verification',
               '',
-              '- [x] Automated CI checks green on this PR',
-              '- [ ] Manual verification — N/A for bot-authored fix',
+              '- [ ] TODO: Run required verification and replace this line.',
               '',
               '### Verification Notes',
               '',
-              '_Auto-injected for bot-authored PR. CI-green is the verification surface._',
-              '_Human reviewer: if this PR touches user-visible behavior, replace this block with manual smoke results before merge._',
+              'TODO: Replace this scaffold with concrete command output, CI check names, or manual smoke-test notes.',
+              '',
+              '## Docs / Changelog',
+              '',
+              'TODO: Record docs/changelog handling.',
+              '',
+              '## Linked Issue',
+              '',
+              `TODO: Closes ${issueRef}`,
               '',
               '---',
               '',

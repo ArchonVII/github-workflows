@@ -24,6 +24,10 @@ on:
         description: "Require at least one `- [x]` checked box in the body."
         type: boolean
         default: true
+      strict-body-contract:
+        description: "Require the canonical Summary / Verification / Verification Notes / Docs-Changelog structure."
+        type: boolean
+        default: true
       verification-section-heading:
         description: "H2 heading exact text (without the `## `)."
         type: string
@@ -155,15 +159,35 @@ jobs:
           REQUIRE_LINKED_ISSUE: ${{ inputs.require-linked-issue }}
           REQUIRE_VERIFICATION_SECTION: ${{ inputs.require-verification-section }}
           REQUIRE_CHECKED_BOX: ${{ inputs.require-checked-box }}
+          STRICT_BODY_CONTRACT: ${{ inputs.strict-body-contract }}
           VERIFICATION_H2: ${{ inputs.verification-section-heading }}
           VERIFICATION_H3: ${{ inputs.verification-notes-heading }}
           DOC_EXT_LIST: ${{ inputs.doc-only-extensions }}
           DOC_PREFIXES: ${{ inputs.doc-only-path-prefixes }}
+          WORKFLOW_LIBRARY_REF: ${{ inputs.workflow-library-ref }}
         with:
           script: |
+            const path = require('path');
+            const url = require('url');
+
             const pr = context.payload.pull_request;
             if (pr.draft) {
               core.info('Draft PR; ready-for-review policy is advisory until draft is cleared.');
+              return;
+            }
+
+            const validatorPath = path.resolve(
+              process.env.GITHUB_WORKSPACE,
+              '__github-workflows__/scripts/pr-contract.mjs',
+            );
+            const workflowRef = process.env.WORKFLOW_LIBRARY_REF || '(unset)';
+            let validatePrContract;
+            let formatPrContractResult;
+            try {
+              ({ validatePrContract, formatPrContractResult } = await import(url.pathToFileURL(validatorPath).href));
+            } catch (err) {
+              const msg = `Could not load PR contract validator at ${validatorPath} (workflow-library-ref=${workflowRef}): ${err && err.message ? err.message : err}.`;
+              core.setFailed(msg);
               return;
             }
 
@@ -173,42 +197,40 @@ jobs:
               pull_number: pr.number,
               per_page: 100,
             });
-            const docExtRe = new RegExp(`\\.(${process.env.DOC_EXT_LIST})$`, 'i');
-            const prefixes = process.env.DOC_PREFIXES
-              .split('\n')
-              .map((s) => s.trim())
-              .filter(Boolean);
-            const isDocFile = (p) => docExtRe.test(p) || prefixes.some((pre) => p.startsWith(pre));
-            if (files.length > 0 && files.every((f) => isDocFile(f.filename))) {
-              core.info(`Doc-only PR (${files.length} file${files.length === 1 ? '' : 's'}); verification ceremony skipped.`);
-              return;
-            }
 
-            const body = pr.body || '';
-            const failures = [];
+            const strict = process.env.STRICT_BODY_CONTRACT === 'true';
+            const requireVerification = process.env.REQUIRE_VERIFICATION_SECTION === 'true';
+            const result = validatePrContract({
+              title: pr.title || '',
+              body: pr.body || '',
+              branch: pr.head.ref || '',
+              files: files.map((file) => file.filename),
+            }, {
+              requireTitle: false,
+              requireBranch: false,
+              docOnlyExtensions: process.env.DOC_EXT_LIST,
+              docOnlyPathPrefixes: process.env.DOC_PREFIXES,
+              requireIssueLink: process.env.REQUIRE_LINKED_ISSUE === 'true',
+              requiredHeadings: strict
+                ? undefined
+                : requireVerification
+                  ? [`## ${process.env.VERIFICATION_H2}`, `### ${process.env.VERIFICATION_H3}`]
+                  : [],
+              requireSummary: strict && requireVerification,
+              requireDocsChangelog: strict && requireVerification,
+              requireSubstantiveVerificationNotes: strict && requireVerification,
+              rejectGenericVerificationNotes: strict && requireVerification,
+              requireCheckedVerification: process.env.REQUIRE_CHECKED_BOX === 'true',
+              requireEvidenceBlocks: false,
+            });
 
-            if (process.env.REQUIRE_LINKED_ISSUE === 'true') {
-              if (!/(Closes|Fixes|Refs)\s+#\d+/i.test(body)) {
-                failures.push('PR body must link an issue with `Closes #N`, `Fixes #N`, or `Refs #N`.');
-              }
-            }
-
-            if (process.env.REQUIRE_VERIFICATION_SECTION === 'true') {
-              const h2 = new RegExp(`##\\s+${process.env.VERIFICATION_H2}`, 'i');
-              const h3 = new RegExp(`###\\s+${process.env.VERIFICATION_H3}`, 'i');
-              if (!h2.test(body) || !h3.test(body)) {
-                failures.push(`PR body must include \`## ${process.env.VERIFICATION_H2}\` and \`### ${process.env.VERIFICATION_H3}\` sections.`);
-              }
-            }
-
-            if (process.env.REQUIRE_CHECKED_BOX === 'true') {
-              if (!/-\s+\[[xX]\]/.test(body)) {
-                failures.push('PR body must record completed verification with at least one checked checkbox.');
-              }
-            }
-
-            if (failures.length > 0) {
-              core.setFailed(failures.join('\n'));
+            const report = formatPrContractResult(result);
+            await core.summary
+              .addHeading(result.ok ? 'PR policy passed' : 'PR policy failed', 3)
+              .addCodeBlock(report, 'text')
+              .write();
+            if (!result.ok) {
+              core.setFailed(report);
             }
 
       # ----------------------------------------------------------------------
