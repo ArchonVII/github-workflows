@@ -78,6 +78,9 @@ on:
       npm-build-script:
         type: string
         default: ""
+      pnpm-version:
+        type: string
+        default: "10"
       python-use-uv:
         type: boolean
         default: true
@@ -415,6 +418,7 @@ jobs:
       typecheck-script: ${{ inputs.npm-typecheck-script }}
       test-script: ${{ inputs.npm-test-script }}
       build-script: ${{ inputs.npm-build-script }}
+      pnpm-version: ${{ inputs.pnpm-version }}
 
   python-ci:
     name: python ci
@@ -444,7 +448,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ fromJSON(inputs.node-versions)[0] }}
-          cache: "npm"
 
       - name: Detect package manager
         id: pm
