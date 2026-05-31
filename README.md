@@ -17,8 +17,8 @@ Companion repos:
 
 | Workflow                                                             | Purpose                                                                                                                                       | Example                                                              |
 | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [`pr-policy.yml`](.github/workflows/pr-policy.yml)                   | Enforce PR body has `## Verification` / `### Verification Notes` / a checked box / a linked issue. Doc-only PRs skip that ceremony. Also warns on role-separation concerns and can hard-gate protected agent PR paths. Also runs `actionlint`. | [`examples/pr-policy.yml`](examples/pr-policy.yml)                   |
-| [`pr-body-autoinject.yml`](.github/workflows/pr-body-autoinject.yml) | When a bot opens a non-doc PR with a freehand body, prepend a stub that satisfies `pr-policy`. Human PRs untouched.                           | [`examples/pr-body-autoinject.yml`](examples/pr-body-autoinject.yml) |
+| [`pr-policy.yml`](.github/workflows/pr-policy.yml)                   | Enforce the shared PR contract validator: canonical title/body structure, linked issue, verification notes, and checked verification. Doc-only PRs skip body ceremony. Also warns on role-separation concerns and can hard-gate protected agent PR paths. Also runs `actionlint`. | [`examples/pr-policy.yml`](examples/pr-policy.yml)                   |
+| [`pr-body-autoinject.yml`](.github/workflows/pr-body-autoinject.yml) | When a bot opens a non-doc PR with a freehand body, prepend an intentionally incomplete scaffold that agents must fill before ready-for-review. Human PRs untouched. | [`examples/pr-body-autoinject.yml`](examples/pr-body-autoinject.yml) |
 | [`semantic-pr-title.yml`](.github/workflows/semantic-pr-title.yml)   | Enforce Conventional Commits format on PR titles. Wraps `amannn/action-semantic-pull-request@v5`.                                             | [`examples/semantic-pr-title.yml`](examples/semantic-pr-title.yml)   |
 | [`branch-naming.yml`](.github/workflows/branch-naming.yml)           | Enforce the `open`-skill branch convention (`agent/<tool>/<issue>-<slug>` or `<type>/<slug>`). Configurable regex.                            | [`examples/branch-naming.yml`](examples/branch-naming.yml)           |
 | [`changelog-fragment.yml`](.github/workflows/changelog-fragment.yml) | Require a new file under `.changelog/unreleased/` whenever a PR touches `src/`. Skippable via `no-changelog` label.                           | [`examples/changelog-fragment.yml`](examples/changelog-fragment.yml) |
@@ -58,7 +58,7 @@ Companion repos:
 
 ## How to consume
 
-In any repo where you want one of these, copy the example caller into `.github/workflows/` and commit it. Inputs are all optional — defaults are conservative.
+In any repo where you want one of these, copy the example caller into `.github/workflows/` and commit it. Inputs are all optional; the PR contract defaults are intentionally strict for ready-for-review.
 
 For branch protection, prefer the single-gate contract:
 
@@ -68,6 +68,17 @@ repo-required-gate / decision
 ```
 
 Keep targeted checks inside the gate or leave them non-required. Do not make branch protection depend on workflows that can be skipped by path filters; GitHub can leave those required checks pending.
+
+For agent closeout, use the shared local preflight instead of direct promotion:
+
+```bash
+npm run agent:close-preflight -- --repo OWNER/REPO --pr 123
+npm run agent:pr-ready -- --repo OWNER/REPO --pr 123
+```
+
+Agents must not run `gh pr ready` directly. `agent:pr-ready` fetches the PR title, body, head branch, and changed files; runs `scripts/pr-contract.mjs`; prints exact repair failures; and only then calls `gh pr ready`.
+
+The canonical scaffold lives at [`contracts/pr-template.md`](contracts/pr-template.md). It is intentionally invalid until the TODOs are replaced with real summary, verification, docs/changelog, and issue-link content.
 
 ```yaml
 # .github/workflows/pr-policy.yml in a consumer repo
