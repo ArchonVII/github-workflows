@@ -21,10 +21,10 @@ Local working trees: `C:\github\.github\`, `C:\github\github-workflows\`, `C:\gi
 
 ## What ships today
 
-### Reusable workflows (15)
+### Reusable workflows (14)
 
 **PR contract & hygiene:** `pr-policy`, `pr-body-autoinject`, `semantic-pr-title`, `branch-naming`, `changelog-fragment`, `labeler`
-**Security & dependencies:** `codeql`, `dependency-review`, `auto-merge-dependabot`
+**Security & dependencies:** `dependency-review`, `auto-merge-dependabot`
 **Generic CI:** `node-ci`, `python-ci`
 **Agent workflow:** `anomaly-triage`
 **Repo hygiene:** `stale`, `lock-threads`, `anomaly-to-issue`
@@ -48,14 +48,12 @@ Ranked by likely value:
 3. **`markdown-lint.yml`** + **`link-check.yml`** reusable workflows for docs-heavy repos. Low priority unless you have a wiki.
 4. **Wire pigafetta to consume `@v1`** — pigafetta still has its own inline copies of `pr-policy`, `pr-body-autoinject`, `changelog-fragment`, `anomaly-to-issue`, `labeler` in `.github/workflows/`. Replacing each with a thin caller to `@v1` would prove the loop and reduce duplication. Do this in a single PR on pigafetta, not here.
 5. **Lock GitHub Actions versions** — `dependabot.yml` in `repo-template` already pins the github-actions ecosystem; on this repo we use floating refs like `actions/checkout@v4`. If you want SHA-pinning, add a Dependabot config here too — but that's a noise/safety tradeoff for a hobby account.
-6. **`codeql.yml` for github-workflows itself** — these JS-in-YAML scripts deserve scanning. Wire a caller in this repo.
-7. **Template repo follow-ups** — add commented-out node-ci and python-ci callers behind clear "uncomment for X stack" markers. Today the user must copy from `examples/` after cloning. Optional convenience.
-8. **`branch-naming.yml` regex polish** — the default regex was tested by inspection only. Worth running it against a sample of historical branch names if you find one that should match but doesn't.
+6. **Template repo follow-ups** — add commented-out node-ci and python-ci callers behind clear "uncomment for X stack" markers. Today the user must copy from `examples/` after cloning. Optional convenience.
+7. **`branch-naming.yml` regex polish** — the default regex was tested by inspection only. Worth running it against a sample of historical branch names if you find one that should match but doesn't.
 
 ## Known gaps / things to verify in the wild
 
 - **`auto-merge-dependabot.yml`** has not been observed running. It uses `dependabot/fetch-metadata@v2` then `gh pr merge --auto`. First time a Dependabot PR lands in a consumer repo, verify the gate works end-to-end and that `gh pr merge --auto` succeeds with `GITHUB_TOKEN` (might need `permissions: contents: write`, which the workflow already sets).
-- **`codeql.yml` matrix** uses `fromJSON(inputs.languages)` against a JSON array string. Tested by inspection; worth a real run on a consumer repo to confirm the matrix expands correctly.
 - **`semantic-pr-title.yml` `pull_request_target`** — be aware that `pull_request_target` runs against the base branch, which is what we want for fork PRs but means a malicious fork can't inject code here (we only read PR metadata). Don't loosen permissions in this workflow.
 - **`pr-body-autoinject.yml`** runs only on `opened`. If a bot edits the body later (Copilot sometimes does), the stub stays put and `pr-policy` keeps passing — that's intended.
 - The `STARTER.md` "Mode 1 vs Mode 2" CHANGELOG decision is documented but not enforced by tooling. A consumer in Mode 1 who accidentally wires `changelog-fragment.yml` will fail every PR. Worth a "what mode are you in?" comment at the top of the example caller someday.
@@ -88,7 +86,7 @@ node /c/github/github-workflows/scripts/setup-repo.mjs ArchonVII/<repo> --solo
 | `pr-policy`, `pr-body-autoinject`, `changelog-fragment`, `anomaly-to-issue`, `labeler` | Battle-tested on pigafetta (these are extractions of working workflows)    |
 | `setup-repo.mjs` labels API path                                                       | Inspection — Octokit-equivalent calls, exact same as GitHub's docs         |
 | `stale`, `lock-threads`, `semantic-pr-title`                                           | Inspection — thin wrappers around mature first/third-party actions         |
-| `codeql`, `dependency-review`                                                          | Inspection — GitHub-first-party actions                                    |
+| `dependency-review`                                                                    | Inspection — GitHub-first-party actions                                    |
 | `auto-merge-dependabot`                                                                | Inspection — will exercise on first real Dependabot PR                     |
 | `node-ci`, `python-ci`                                                                 | Inspection — manager detection logic should work; verify on first consumer |
 | `branch-naming`                                                                        | Inspection — default regex covers the documented conventions               |
