@@ -1,7 +1,7 @@
 # Release Workflow Skill, Script, And Agent Breakdown
 
 This is an honest accounting of the release workflow around
-`ArchonVII/github-workflows` as of 2026-05-31. It separates what exists in this
+`ArchonVII/github-workflows` as of 2026-06-02. It separates what exists in this
 repo from what the global Pigafetta-style skills expect and from what is still
 planned. It intentionally calls out gaps, duplication, and places where the
 instruction exists but the command does not.
@@ -11,6 +11,8 @@ Sources checked: this repo's `README.md`, `HANDOFF.md`, `.github/workflows/**`,
 `using-superpowers`, `session`, `open`, `release-commander`, `close`,
 `jma-commit`, `jma-git-pr-lifecycle`, `jma-commit-push-pr`,
 `archon-ecosystem-sync`, `bookmark`, `manager`, `github`, and `release-cut`.
+Freshness refresh also checked `github-workflows` PRs #39 and #43 plus
+`archon-setup` PR #94.
 
 ## Part 1: What Actually Exists Now
 
@@ -30,7 +32,8 @@ Sources checked: this repo's `README.md`, `HANDOFF.md`, `.github/workflows/**`,
 3. The agent checks repo status.
    Global policy says to run `npm run agent:prune` and `npm run agent:status`
    when present. In this repo, both scripts are absent. `package.json` currently
-   exposes only `npm test`.
+   exposes `agent:close-preflight`, `agent:pr-ready`, `pr:contract`, and
+   `test`.
 
 4. The agent creates or confirms the issue.
    There is no repo-local issue bootstrap. The agent uses `gh issue` directly
@@ -38,9 +41,11 @@ Sources checked: this repo's `README.md`, `HANDOFF.md`, `.github/workflows/**`,
 
 5. The agent creates the work lane.
    Global policy prefers `npm run agent:start-task -- <issue> [--agent <name>]`.
-   This repo does not have `agent:start-task`, so the current real path is
-   manual: fetch `origin/main`, create `agent/<tool>/<issue>-<slug>`, and add a
-   worktree from `origin/main`.
+   This repo does not have `agent:start-task` locally, although
+   `archon-setup` can now install and audit the repo-template agent lifecycle
+   baseline in target repos. Until this repo adopts that baseline, the current
+   real path here is manual: fetch `origin/main`, create
+   `agent/<tool>/<issue>-<slug>`, and add a worktree from `origin/main`.
 
 6. The agent claims files.
    The instruction exists in the global policy, `release-commander`, `close`,
@@ -57,9 +62,11 @@ Sources checked: this repo's `README.md`, `HANDOFF.md`, `.github/workflows/**`,
 
 8. The agent verifies locally.
    The repo-owned command is `npm test`, which runs Vitest tests for
-   `scripts/**` and workflow structure assertions. There is no local
-   `close:scan:complete`, `close:ci:guard`, `wiki:status`, or `wiki:record`
-   command in this repo.
+   `scripts/**` and workflow structure assertions. `npm run pr:contract`
+   validates PR title, body, branch, changed files, and verification ceremony.
+   The package also exposes `agent:close-preflight` and `agent:pr-ready`
+   wrappers for the PR promotion path. There is no local `close:scan:complete`,
+   `close:ci:guard`, `wiki:status`, or `wiki:record` command in this repo.
 
 9. The agent commits.
    The current safe-commit instruction lives in `jma-commit` and
@@ -68,18 +75,18 @@ Sources checked: this repo's `README.md`, `HANDOFF.md`, `.github/workflows/**`,
    custom commit wrapper.
 
 10. The agent pushes and opens or updates a PR.
-    The current PR lifecycle is skill-driven through `jma-git-pr-lifecycle`,
-    `jma-commit-push-pr`, `github`, and `release-commander`. This repo does not
-    contain a local PR template, but the organization default PR template exists
-    in `ArchonVII/.github`.
+    The current PR lifecycle combines repo-owned PR contract wrappers with
+    skills such as `jma-git-pr-lifecycle`, `jma-commit-push-pr`, `github`, and
+    `release-commander`. This repo does not contain a local PR template, but the
+    organization default PR template exists in `ArchonVII/.github`.
 
 11. GitHub Actions run.
-    The repo has 17 reusable workflows plus one direct self-test workflow:
+    The repo has 16 reusable workflows plus one direct self-test workflow:
     `actionlint`, `anomaly-to-issue`, `anomaly-triage`,
-    `auto-merge-dependabot`, `branch-naming`, `changelog-fragment`, `codeql`,
+    `auto-merge-dependabot`, `branch-naming`, `changelog-fragment`,
     `dependency-review`, `labeler`, `lock-threads`, `node-ci`,
     `pr-body-autoinject`, `pr-policy`, `python-ci`, `repo-required-gate`,
-    `semantic-pr-title`, `stale`, and non-reusable `self-test`.
+    `semantic-pr-title`, `stale`, and direct non-reusable `self-test`.
     The reusable workflows are active, but they run only when called by a
     consumer workflow. For this repo itself, `self-test.yml` is the only local
     workflow with normal `pull_request` / `push` triggers.
@@ -120,15 +127,27 @@ Sources checked: this repo's `README.md`, `HANDOFF.md`, `.github/workflows/**`,
     files left alone. In this repo, most cleanup is manual or skill-driven, not
     enforced by repo scripts.
 
-### Current Repo Scripts
+### Current Package Scripts
 
 | Script | Current role |
 | --- | --- |
+| `agent:close-preflight` | Runs `scripts/agent-close-preflight.mjs` to validate PR contract state, draft/ready expectations, current branch identity, clean working tree, and push state before close promotion. |
+| `agent:pr-ready` | Runs `scripts/agent-pr-ready.mjs` so agents promote PRs only after the shared PR contract passes. Supports `--dry-run`. |
+| `pr:contract` | Runs `scripts/pr-contract.mjs`, the shared PR metadata/body contract validator used by local wrappers and reusable workflows. |
+| `test` | Runs `vitest run` for scripts and workflow-structure assertions. |
+
+### Current Script Files
+
+| Script | Current role |
+| --- | --- |
+| `scripts/agent-close-preflight.mjs` | Local wrapper around the PR contract plus git-state checks before close promotion. |
+| `scripts/agent-pr-ready.mjs` | Local wrapper that validates the PR contract before calling `gh pr ready`, or reports what would happen with `--dry-run`. |
+| `scripts/pr-contract.mjs` | Shared PR title/body/branch/verification validator used locally and by reusable workflows. |
 | `scripts/setup-repo.mjs` | Applies standard labels and branch protection to a target repo through `gh api`; does not write files or add workflow callers. |
 | `scripts/classify-pr.mjs` | Pure helper loaded by `repo-required-gate.yml` to choose docs, workflow, policy, snapshot, code, or forced-full lanes. |
 | `scripts/parse-evidence.mjs` | Pure helper loaded by `pr-policy.yml` to validate fenced `evidence` blocks under checked verification items. |
 | `scripts/role-policy.mjs` | Pure helper loaded by `pr-policy.yml` to warn or hard-fail role-separation violations when configured. |
-| `scripts/*.test.mjs` | Vitest coverage for classifier, evidence parser, role policy, and workflow structure. |
+| `scripts/*.test.mjs` | Vitest coverage for classifier, PR contract, evidence parser, role policy, and workflow structure. |
 
 ### Current Agent And Skill Inventory
 
@@ -163,6 +182,9 @@ Sources checked: this repo's `README.md`, `HANDOFF.md`, `.github/workflows/**`,
    state, inspect recent commits and stashes, and identify open plans. Repo
    scripts such as `npm run agent:prune`, `npm run agent:status`, and
    `npm run wiki:status` are expected only when a repo actually provides them.
+   `archon-setup` can now install and audit the repo-template baseline for
+   `agent:start-task`, `agent:status`, and `agent:prune`; this repo has not
+   adopted those lifecycle commands locally beyond its PR contract wrappers.
 
 3. The lane is selected.
    `open` decides whether this is implementation, planning/docs, quick fix, or
@@ -177,7 +199,9 @@ Sources checked: this repo's `README.md`, `HANDOFF.md`, `.github/workflows/**`,
 5. The branch/worktree is created from fresh `origin/main`.
    The preferred command is `npm run agent:start-task -- <issue> [--agent
    <name>]`. If absent, manual `git fetch` plus `git worktree add -b
-   agent/<tool>/<issue>-<slug> <path> origin/main` is the fallback.
+   agent/<tool>/<issue>-<slug> <path> origin/main` is the fallback. In the
+   broader ecosystem, `archon-setup` can now add the repo-template lifecycle
+   baseline to repos that should provide the command.
 
 6. Claims are acquired before editing when the repo requires claims.
    Expected commands are `npm run agent:claim -- --agent <name> --issue
@@ -243,9 +267,13 @@ Sources checked: this repo's `README.md`, `HANDOFF.md`, `.github/workflows/**`,
 
 1. Add or adopt repo-owned agent lifecycle commands where this repo is supposed
    to behave like a full Pigafetta-style lane.
-   Missing today: `agent:start-task`, `agent:prune`, `agent:status`,
-   `agent:claim`, `agent:release`, `close:scan:complete`, `close:ci:guard`,
-   `wiki:status`, and `wiki:record`.
+   `archon-setup` can install and audit the repo-template baseline for
+   `agent:start-task`, `agent:status`, and `agent:prune`, so the remaining
+   decision is whether to onboard this repo to that baseline or keep its local
+   lifecycle surface limited to PR contract wrappers. Missing locally today:
+   `agent:start-task`, `agent:prune`, `agent:status`, `agent:claim`,
+   `agent:release`, `close:scan:complete`, `close:ci:guard`, `wiki:status`,
+   and `wiki:record`.
 
 2. Decide whether `main` should be mechanically protected in
    `ArchonVII/github-workflows`.
@@ -254,8 +282,8 @@ Sources checked: this repo's `README.md`, `HANDOFF.md`, `.github/workflows/**`,
    but the repository does not currently enforce that mechanically.
 
 3. Update README and handoff counts.
-   `HANDOFF.md` still says this repo has 14 or 15 reusable workflows. The
-   current repo has 17 reusable workflow files plus non-reusable `self-test`.
+   `HANDOFF.md` still says this repo has 14 reusable workflows. The current
+   repo has 16 reusable workflow files plus direct non-reusable `self-test`.
    README also does not list `actionlint.yml` or explain `self-test.yml` as the
    repo's own direct-trigger test workflow.
 
@@ -281,9 +309,9 @@ Sources checked: this repo's `README.md`, `HANDOFF.md`, `.github/workflows/**`,
 7. Finish planned workflow upgrades from `HANDOFF.md`.
    Planned items include `release-drafter.yml`, `release-cut.mjs`,
    `markdown-lint.yml`, `link-check.yml`, wiring Pigafetta to consume `@v1`,
-   optional GitHub Actions SHA pinning and Dependabot configuration, a CodeQL
-   caller for this repo itself, repo-template convenience callers, and
-   branch-regex polish against historical branch samples.
+   optional GitHub Actions SHA pinning and Dependabot configuration,
+   repo-template convenience callers, and branch-regex polish against
+   historical branch samples.
 
 8. Decide how strict evidence enforcement should become.
    `parse-evidence.mjs` already validates checked verification items, but
