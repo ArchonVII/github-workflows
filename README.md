@@ -28,7 +28,6 @@ Companion repos:
 
 | Workflow                                                                   | Purpose                                                                                                                             | Example                                                                    |
 | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| [`codeql.yml`](.github/workflows/codeql.yml)                               | GitHub's native semantic code analysis. JS/TS, Python, Go, Java, C/C++, Ruby, Swift, Rust. Results land in the repo's Security tab. | [`examples/codeql.yml`](examples/codeql.yml)                               |
 | [`dependency-review.yml`](.github/workflows/dependency-review.yml)         | Block PRs that introduce vulnerable or copyleft-licensed dependencies. Operates on the lockfile diff.                               | [`examples/dependency-review.yml`](examples/dependency-review.yml)         |
 | [`auto-merge-dependabot.yml`](.github/workflows/auto-merge-dependabot.yml) | Auto-merge Dependabot PRs that match the allowed update types (default: patch + minor) and pass CI.                                 | [`examples/auto-merge-dependabot.yml`](examples/auto-merge-dependabot.yml) |
 
