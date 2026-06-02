@@ -88,6 +88,21 @@ describe('repo-required-gate workflow node delegation', () => {
     }
   });
 
+  it('honors optional validation inputs in the decision job', () => {
+    const body = readWorkflow('repo-required-gate');
+    const block = workflowJobBlock(body, 'decision');
+
+    expect(block).toContain(
+      "RUN_DEPENDENCY_REVIEW: ${{ inputs.run-dependency-review && needs.detect.outputs.run-dependency-review == 'true' }}",
+    );
+    expect(block).toContain(
+      "RUN_WORKFLOW_VALIDATION: ${{ inputs.run-workflow-validation && needs.detect.outputs.run-workflow-validation == 'true' }}",
+    );
+    expect(block).toContain(
+      "RUN_POLICY_VALIDATION: ${{ inputs.run-policy-validation && needs.detect.outputs.run-policy-validation == 'true' }}",
+    );
+  });
+
   it('declares the doc-only inputs passed to the shared PR contract validator', () => {
     const body = readWorkflow('repo-required-gate');
 
