@@ -576,9 +576,9 @@ jobs:
           OK: ${{ needs.detect.outputs.ok }}
           RUN_NODE_CI: ${{ needs.detect.outputs.run-node-ci }}
           RUN_PYTHON_CI: ${{ needs.detect.outputs.run-python-ci }}
-          RUN_DEPENDENCY_REVIEW: ${{ needs.detect.outputs.run-dependency-review }}
-          RUN_WORKFLOW_VALIDATION: ${{ needs.detect.outputs.run-workflow-validation }}
-          RUN_POLICY_VALIDATION: ${{ needs.detect.outputs.run-policy-validation }}
+          RUN_DEPENDENCY_REVIEW: ${{ inputs.run-dependency-review && needs.detect.outputs.run-dependency-review == 'true' }}
+          RUN_WORKFLOW_VALIDATION: ${{ inputs.run-workflow-validation && needs.detect.outputs.run-workflow-validation == 'true' }}
+          RUN_POLICY_VALIDATION: ${{ inputs.run-policy-validation && needs.detect.outputs.run-policy-validation == 'true' }}
           RUN_SNAPSHOT_VALIDATION: ${{ needs.detect.outputs.run-snapshot-validation }}
           DETECT_RESULT: ${{ needs.detect.result }}
           CONTRACT_RESULT: ${{ needs.pr-contract.result }}
