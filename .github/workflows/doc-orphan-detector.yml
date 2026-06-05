@@ -1,0 +1,301 @@
+name: Doc Orphan Detector (reusable)
+
+# The doc-sweep gh-cron backstop (doc-sweep spec §4.7). For every branch with
+# NO open PR, diff `origin/main...<branch>` and collect changed paths that match
+# the sweepable-docs allow-list (§4.1). If any allow-list doc paths are present
+# AND the latest commit touching those paths is older than `stale-hours`, open
+# or update a single idempotent tracking issue per branch listing the orphaned
+# paths.
+#
+# A gh-cron sees only PUSHED commits — committed-but-orphaned docs on stale
+# branches. It cannot see uncommitted working-tree files (that is the local
+# sweep-on-open / flush-on-close job).
+#
+# DETECTION ONLY: never commits, never pushes, and reports PATHS ONLY — it never
+# reads or surfaces file contents.
+#
+# Consumers schedule this via a thin caller that triggers `on: schedule`
+# (cron) and/or `on: workflow_dispatch`, then `uses:` this reusable workflow.
+
+on:
+  workflow_call:
+    inputs:
+      stale-hours:
+        description: "A branch's doc paths are orphaned once the newest commit touching them is older than this many hours."
+        type: number
+        # 12h source: owner decision 2026-06-02 (doc-sweep spec §4.3). Long
+        # enough that a live-but-slow session never trips it; short enough to
+        # recover within a workday.
+        default: 12
+      base-label:
+        description: "Label applied to every doc-orphan tracking issue."
+        type: string
+        default: "doc-orphan"
+      default-branch:
+        description: "The default branch to diff every other branch against."
+        type: string
+        default: "main"
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history + all branches so `origin/main...<branch>` diffs and
+          # per-path commit timestamps are available for every branch.
+          fetch-depth: 0
+
+      - uses: actions/github-script@v7
+        env:
+          STALE_HOURS: ${{ inputs.stale-hours }}
+          BASE_LABEL: ${{ inputs.base-label }}
+          DEFAULT_BRANCH: ${{ inputs.default-branch }}
+        with:
+          script: |
+            const { execFileSync } = require('child_process');
+
+            const defaultBranch = process.env.DEFAULT_BRANCH;
+            const baseLabel = process.env.BASE_LABEL;
+            const staleHours = Number(process.env.STALE_HOURS);
+            if (!Number.isFinite(staleHours) || staleHours < 0) {
+              core.setFailed(`invalid stale-hours \`${process.env.STALE_HOURS}\``);
+              return;
+            }
+            // milliseconds in one hour (60 min * 60 s * 1000 ms)
+            const staleMs = staleHours * 60 * 60 * 1000;
+
+            const git = (args) =>
+              execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+
+            // --- §4.1 allow-list / hard-exclude, matched case-INSENSITIVELY,
+            //     exclude wins ties. This block MIRRORS the canonical doc-sweep
+            //     runner classifier (scripts/doc-sweep/lib.mjs `isSweepable`) so
+            //     the cron detector and the local sweep agree path-for-path. A
+            //     reusable workflow runs in the CALLER's checkout and cannot
+            //     import a module, so the logic is inlined and kept honest by
+            //     scripts/doc-orphan-detector.test.mjs, which extracts the
+            //     classify-block below and exercises it against spec §7.
+            // classify-block:start
+            const ALLOW = [
+              /^docs\//i,
+              /^\.changelog\//i,
+              /^\.html-artifacts\//i,
+              /\.(png|jpe?g|gif|webp|svg)$/i,
+            ];
+            // docs/process/** and docs/architecture/** require review — §4.1.
+            const ALLOW_EXCEPT = [/^docs\/process\//i, /^docs\/architecture\//i];
+            // Hard-excludes — §4.1: code/CI/hooks, agent config, governance,
+            // manifests, plus the I4 Docusaurus carve-outs (code/config under docs/).
+            const EXCLUDE = [
+              /^src\//i,
+              /^scripts\//i,
+              /^\.github\//i,
+              /^\.githooks\//i,
+              /^\.claude\//i,
+              /^\.codex\//i,
+              /^\.gemini\//i,
+              /^\.agent\/schema\//i,
+              /^(README|AGENTS|CLAUDE|GEMINI)\.md$/i,
+              /(^|\/)package[^/]*\.json$/i,
+              /\.(js|jsx|ts|tsx|mjs|cjs|mts|cts|json)$/i,
+              /^docs\/src\//i,
+              /^docs\/static\//i,
+            ];
+            const norm = (p) => String(p).replace(/\\/g, '/').replace(/^\.\//, '');
+            function isSweepableDoc(rawPath) {
+              const p = norm(rawPath);
+              if (EXCLUDE.some((r) => r.test(p))) return false; // exclude wins ties
+              if (ALLOW_EXCEPT.some((r) => r.test(p))) return false;
+              return ALLOW.some((r) => r.test(p));
+            }
+            // classify-block:end
+
+            // Resolve the default branch ref we diff against (prefer the remote
+            // tracking ref so this works on a fresh fetch-depth:0 checkout).
+            let baseRef = null;
+            for (const candidate of [`origin/${defaultBranch}`, defaultBranch]) {
+              try {
+                git(['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`]);
+                baseRef = candidate;
+                break;
+              } catch (_) {
+                /* try next */
+              }
+            }
+            if (!baseRef) {
+              core.setFailed(`cannot resolve default branch ref \`${defaultBranch}\``);
+              return;
+            }
+
+            // Enumerate every remote branch except the default branch itself.
+            const branchLines = git([
+              'for-each-ref',
+              '--format=%(refname:short)',
+              'refs/remotes/origin',
+            ])
+              .split('\n')
+              .map((s) => s.trim())
+              .filter(Boolean);
+
+            const branches = [];
+            for (const full of branchLines) {
+              if (full === 'origin/HEAD' || full.startsWith('origin/HEAD ')) continue;
+              if (!full.startsWith('origin/')) continue;
+              const name = full.slice('origin/'.length);
+              if (name === defaultBranch) continue;
+              branches.push({ remoteRef: full, name });
+            }
+
+            // Branches that already have an OPEN PR are skipped — the PR is the
+            // tracking surface; only no-PR branches can strand docs invisibly.
+            const openPRs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const branchesWithOpenPR = new Set(openPRs.map((pr) => pr.head.ref));
+
+            const now = Date.now();
+            const reportedBranches = [];
+
+            for (const branch of branches) {
+              if (branchesWithOpenPR.has(branch.name)) {
+                core.info(`Skipping \`${branch.name}\`: has an open PR.`);
+                continue;
+              }
+
+              // Changed paths on this branch relative to the merge base with the
+              // default branch (three-dot): the branch's own additions/edits.
+              let changed;
+              try {
+                changed = git([
+                  'diff',
+                  '--name-only',
+                  `${baseRef}...${branch.remoteRef}`,
+                ])
+                  .split('\n')
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+              } catch (err) {
+                core.warning(`diff failed for \`${branch.name}\`: ${err.message}`);
+                continue;
+              }
+
+              const docPaths = changed.filter(isSweepableDoc).sort();
+              if (docPaths.length === 0) continue;
+
+              // Staleness: newest commit on this branch that touched ANY of the
+              // matched doc paths. If that commit is older than the threshold,
+              // the docs are orphaned. PATHS ONLY — contents are never read.
+              let newestTouchSec = 0;
+              try {
+                const out = git([
+                  'log',
+                  '-1',
+                  '--format=%ct',
+                  branch.remoteRef,
+                  '--',
+                  ...docPaths,
+                ]).trim();
+                newestTouchSec = out ? Number(out) : 0;
+              } catch (err) {
+                core.warning(`log failed for \`${branch.name}\`: ${err.message}`);
+                continue;
+              }
+              if (!newestTouchSec) continue;
+
+              const ageMs = now - newestTouchSec * 1000;
+              if (ageMs < staleMs) {
+                core.info(
+                  `Skipping \`${branch.name}\`: doc paths fresh (` +
+                    `${(ageMs / 3600000).toFixed(1)}h < ${staleHours}h).`,
+                );
+                continue;
+              }
+
+              const lastTouchedIso = new Date(newestTouchSec * 1000).toISOString();
+              const issueTitle = `Doc orphans: ${branch.name}`;
+              const body = [
+                `Branch \`${branch.name}\` has **no open PR** and carries committed doc paths`,
+                `whose newest touching commit (${lastTouchedIso}) is older than ${staleHours}h.`,
+                '',
+                'These add-only/allow-list doc paths look stranded on a stale branch:',
+                '',
+                ...docPaths.map((p) => `- \`${p}\``),
+                '',
+                '---',
+                'Detected by the reusable `doc-orphan-detector` workflow (doc-sweep spec §4.7).',
+                'Detection only: no commit, no push, paths only (contents are never read).',
+                'Recover via the local doc-sweep runner, or open a PR from this branch.',
+                'This issue is idempotent — re-runs update this body in place.',
+              ].join('\n');
+
+              // Idempotent: find an existing OPEN issue with this exact title and
+              // update its body rather than duplicating.
+              const found = await github.paginate(github.rest.issues.listForRepo, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                labels: baseLabel,
+                per_page: 100,
+              });
+              const existing = found.find(
+                (i) => !i.pull_request && i.title === issueTitle,
+              );
+
+              if (existing) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body,
+                });
+                core.info(`Updated #${existing.number} for \`${branch.name}\`.`);
+                reportedBranches.push({ branch: branch.name, issue: existing.number });
+              } else {
+                // Ensure the base label exists before assigning it.
+                try {
+                  await github.rest.issues.getLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: baseLabel,
+                  });
+                } catch (e) {
+                  if (e.status === 404) {
+                    // doc-orphan label color: a muted amber for "needs attention".
+                    await github.rest.issues.createLabel({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      name: baseLabel,
+                      color: 'D4A017',
+                      description: 'Committed docs stranded on a stale, PR-less branch.',
+                    });
+                  } else {
+                    throw e;
+                  }
+                }
+                const { data: issue } = await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: issueTitle,
+                  body,
+                  labels: [baseLabel],
+                });
+                core.info(`Opened #${issue.number} for \`${branch.name}\`.`);
+                reportedBranches.push({ branch: branch.name, issue: issue.number });
+              }
+            }
+
+            if (reportedBranches.length === 0) {
+              core.info('No doc-orphan branches detected.');
+            } else {
+              core.info(
+                `Reported ${reportedBranches.length} doc-orphan branch(es): ` +
+                  reportedBranches.map((r) => `${r.branch} → #${r.issue}`).join(', '),
+              );
+            }
