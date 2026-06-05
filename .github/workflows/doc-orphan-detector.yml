@@ -72,22 +72,47 @@ jobs:
               execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 
             // --- §4.1 allow-list / hard-exclude, matched case-INSENSITIVELY,
-            //     exclude wins ties. Paths come from git output, already
-            //     repo-relative POSIX with forward slashes.
-            const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
+            //     exclude wins ties. This block MIRRORS the canonical doc-sweep
+            //     runner classifier (scripts/doc-sweep/lib.mjs `isSweepable`) so
+            //     the cron detector and the local sweep agree path-for-path. A
+            //     reusable workflow runs in the CALLER's checkout and cannot
+            //     import a module, so the logic is inlined and kept honest by
+            //     scripts/doc-orphan-detector.test.mjs, which extracts the
+            //     classify-block below and exercises it against spec §7.
+            // classify-block:start
+            const ALLOW = [
+              /^docs\//i,
+              /^\.changelog\//i,
+              /^\.html-artifacts\//i,
+              /\.(png|jpe?g|gif|webp|svg)$/i,
+            ];
+            // docs/process/** and docs/architecture/** require review — §4.1.
+            const ALLOW_EXCEPT = [/^docs\/process\//i, /^docs\/architecture\//i];
+            // Hard-excludes — §4.1: code/CI/hooks, agent config, governance,
+            // manifests, plus the I4 Docusaurus carve-outs (code/config under docs/).
+            const EXCLUDE = [
+              /^src\//i,
+              /^scripts\//i,
+              /^\.github\//i,
+              /^\.githooks\//i,
+              /^\.claude\//i,
+              /^\.codex\//i,
+              /^\.gemini\//i,
+              /^\.agent\/schema\//i,
+              /^(README|AGENTS|CLAUDE|GEMINI)\.md$/i,
+              /(^|\/)package[^/]*\.json$/i,
+              /\.(js|jsx|ts|tsx|mjs|cjs|mts|cts|json)$/i,
+              /^docs\/src\//i,
+              /^docs\/static\//i,
+            ];
+            const norm = (p) => String(p).replace(/\\/g, '/').replace(/^\.\//, '');
             function isSweepableDoc(rawPath) {
-              const p = rawPath.toLowerCase();
-              // exclude wins ties: review-required doc subtrees are never swept.
-              if (p.startsWith('docs/process/') || p.startsWith('docs/architecture/')) {
-                return false;
-              }
-              if (p.startsWith('docs/')) return true;
-              if (p.startsWith('.changelog/')) return true;
-              if (p.startsWith('.html-artifacts/')) return true;
-              const dot = p.lastIndexOf('.');
-              if (dot !== -1 && IMAGE_EXTS.includes(p.slice(dot + 1))) return true;
-              return false;
+              const p = norm(rawPath);
+              if (EXCLUDE.some((r) => r.test(p))) return false; // exclude wins ties
+              if (ALLOW_EXCEPT.some((r) => r.test(p))) return false;
+              return ALLOW.some((r) => r.test(p));
             }
+            // classify-block:end
 
             // Resolve the default branch ref we diff against (prefer the remote
             // tracking ref so this works on a fresh fetch-depth:0 checkout).
