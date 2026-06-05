@@ -9,6 +9,9 @@ Companion repos:
 - **[`ArchonVII/.github`](https://github.com/ArchonVII/.github)** — auto-applied community health files (PR template, issue forms, `SECURITY.md`, `release.yml`). See [`STARTER.md`](https://github.com/ArchonVII/.github/blob/main/STARTER.md) for the full document-policy guide.
 - **[`ArchonVII/repo-template`](https://github.com/ArchonVII/repo-template)** — clone-and-go bootstrap with all the caller workflows pre-wired. Mark "Use this template" when creating a new repo.
 
+For the current skill, script, and agent responsibility map around the release
+workflow, see [`docs/release-workflow-breakdown.md`](docs/release-workflow-breakdown.md).
+
 ---
 
 ## Workflows
