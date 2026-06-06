@@ -97,8 +97,12 @@ jobs:
             default_cache="npm"
             cache_dependency_path="${lock_prefix}package-lock.json"
           else
+            # No lockfile present (depless repo, or a project without a committed
+            # lockfile). `npm ci` REQUIRES a lockfile and would always fail here, so
+            # fall back to a non-lockfile install. --no-package-lock keeps CI from
+            # fabricating a stray package-lock.json artifact.
             manager="npm"
-            install="npm ci"
+            install="npm install --no-package-lock"
             run="npm run --if-present"
             default_cache=""
             cache_dependency_path=""
