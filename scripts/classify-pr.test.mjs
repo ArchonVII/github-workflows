@@ -449,3 +449,122 @@ describe('classifyPR — interaction edge cases', () => {
     expect(r.lane).toBe('snapshot-refresh');
   });
 });
+
+describe('classifyPR — stack=go (first-class Go lane, #51)', () => {
+  it('38. go code change → code (go), runs go-ci only', () => {
+    const r = classifyPR(input({ stack: 'go', files: ['pkg/wshrpc/foo.go'] }));
+    expect(r.ok).toBe(true);
+    expect(r.lane).toBe('code (go)');
+    expect(r.outputs.runGoCi).toBe(true);
+    expect(r.outputs.runNodeCi).toBe(false);
+    expect(r.outputs.runPythonCi).toBe(false);
+    expect(r.outputs.runCi).toBe(true);
+    expect(r.jobsRequired).toContain('go-ci');
+    expect(r.jobsRequired).toContain('decision');
+  });
+
+  it('39. go.mod bump → runGoCi + runDependencyReview', () => {
+    const r = classifyPR(input({ stack: 'go', files: ['go.mod'] }));
+    expect(r.outputs.runGoCi).toBe(true);
+    expect(r.outputs.runDependencyReview).toBe(true);
+  });
+
+  it('40. go stack, docs-only PR → docs-only lane, go-ci skipped', () => {
+    const r = classifyPR(input({ stack: 'go', files: ['README.md'] }));
+    expect(r.lane).toBe('docs-only');
+    expect(r.outputs.runGoCi).toBe(false);
+    expect(r.jobsSkipped).toEqual(expect.arrayContaining(['go-ci']));
+  });
+
+  it('41. go stack push event → broad routing runs go-ci', () => {
+    const r = classifyPR(input({ stack: 'go', isPullRequest: false }));
+    expect(r.lane).toMatch(/push-event/);
+    expect(r.outputs.runGoCi).toBe(true);
+    expect(r.outputs.runNodeCi).toBe(false);
+  });
+
+  it('42. go stack + ci:full label → forced-full runs go-ci', () => {
+    const r = classifyPR(
+      input({ stack: 'go', files: ['README.md'], labels: ['ci:full'] }),
+    );
+    expect(r.outputs.forcedFull).toBe(true);
+    expect(r.outputs.runGoCi).toBe(true);
+  });
+
+  it('43. go stack, minimal-invariant unaffected: stack=go + code is valid', () => {
+    const r = classifyPR(input({ stack: 'go', files: ['cmd/server/main.go'] }));
+    expect(r.ok).toBe(true);
+    expect(r.outputs.runGoCi).toBe(true);
+  });
+});
+
+describe('classifyPR — polyglot with Go (node+go, #51)', () => {
+  // archon's real shape: Electron/React frontend + Go backend.
+  const NODE = 'frontend/**\nemain/**\npackage.json\npackage-lock.json';
+  const GO = 'cmd/**\npkg/**\ngo.mod\ngo.sum\ntsunami/**';
+  const PY = 'analysis-service/**';
+
+  it('44. polyglot, go-only PR → code (polyglot: go), go-ci only', () => {
+    const r = classifyPR(
+      input({ stack: 'polyglot', nodePaths: NODE, goPaths: GO, files: ['pkg/wshrpc/foo.go'] }),
+    );
+    expect(r.lane).toBe('code (polyglot: go)');
+    expect(r.outputs.runGoCi).toBe(true);
+    expect(r.outputs.runNodeCi).toBe(false);
+    expect(r.outputs.runPythonCi).toBe(false);
+  });
+
+  it('45. polyglot, node+go mixed → both lanes, label lists both', () => {
+    const r = classifyPR(
+      input({
+        stack: 'polyglot',
+        nodePaths: NODE,
+        goPaths: GO,
+        files: ['frontend/app/app.tsx', 'pkg/service/foo.go'],
+      }),
+    );
+    expect(r.lane).toBe('code (polyglot: node+go)');
+    expect(r.outputs.runNodeCi).toBe(true);
+    expect(r.outputs.runGoCi).toBe(true);
+  });
+
+  it('46. polyglot with ONLY go-paths set satisfies the guardrail', () => {
+    const r = classifyPR(
+      input({ stack: 'polyglot', goPaths: GO, files: ['pkg/foo.go'] }),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.outputs.runGoCi).toBe(true);
+  });
+
+  it('47. polyglot with all three empty path lists → ok=false', () => {
+    const r = classifyPR(
+      input({ stack: 'polyglot', nodePaths: '', pythonPaths: '', goPaths: '' }),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.errors[0]).toMatch(/polyglot requires at least one/);
+  });
+
+  it('48. polyglot, node+python+go all touched → label lists all three in order', () => {
+    const r = classifyPR(
+      input({
+        stack: 'polyglot',
+        nodePaths: NODE,
+        pythonPaths: PY,
+        goPaths: GO,
+        files: ['frontend/a.tsx', 'analysis-service/b.py', 'pkg/c.go'],
+      }),
+    );
+    expect(r.lane).toBe('code (polyglot: node+python+go)');
+    expect(r.outputs.runNodeCi).toBe(true);
+    expect(r.outputs.runPythonCi).toBe(true);
+    expect(r.outputs.runGoCi).toBe(true);
+  });
+
+  it('49. polyglot push event with go-paths → go-ci runs alongside node-ci', () => {
+    const r = classifyPR(
+      input({ stack: 'polyglot', nodePaths: NODE, goPaths: GO, isPullRequest: false }),
+    );
+    expect(r.outputs.runGoCi).toBe(true);
+    expect(r.outputs.runNodeCi).toBe(true);
+  });
+});
