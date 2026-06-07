@@ -98,6 +98,55 @@ export function formatPrContractResult(result) {
   return lines.join('\n');
 }
 
+/**
+ * Validate that a committed PR template can satisfy the contract's required
+ * heading structure (all required headings present, in the required order).
+ *
+ * Unlike validatePrContract, this checks STRUCTURE ONLY — not checked boxes,
+ * placeholders, or substantive content — because a template legitimately ships
+ * with unchecked boxes and TODO/comment placeholders. It catches the drift
+ * class where a repo's own .github/PULL_REQUEST_TEMPLATE.md cannot itself pass
+ * the gate it is subject to (e.g. a pre-strict template using `## Changelog`
+ * instead of `## Docs / Changelog`, or missing `### Verification Notes`).
+ * Source: /page-gm incident 2026-06-07 (ArchonVII/hudson-bend#43;
+ * ArchonVII/github-workflows#53).
+ *
+ * @param {string} templateBody Raw PULL_REQUEST_TEMPLATE.md contents.
+ * @param {object} [options]
+ * @param {Array} [options.requiredHeadings] Defaults to DEFAULT_REQUIRED_HEADINGS.
+ * @returns {{ok:boolean, errors:Array<{code:string,message:string,path:string}>, warnings:Array, facts:object}}
+ */
+export function validatePrTemplate(templateBody, options = {}) {
+  const required = normalizeHeadings(options.requiredHeadings || DEFAULT_REQUIRED_HEADINGS);
+  const errors = [];
+  const headings = parseHeadings(templateBody || '');
+  validateHeadingOrder(headings, required, errors);
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings: [],
+    facts: { headingCount: headings.length },
+  };
+}
+
+export function formatPrTemplateResult(result) {
+  if (result.ok) {
+    return 'PR template conforms to the required contract structure.';
+  }
+
+  const lines = [
+    'PR template does NOT conform to the strict PR contract structure.',
+    'Filling this template out verbatim would fail `repo-required-gate / pr contract`.',
+    'Sync `.github/PULL_REQUEST_TEMPLATE.md` from ArchonVII/repo-template.',
+    '',
+    'Structure issues:',
+  ];
+  for (const item of result.errors) {
+    lines.push(`- [${item.code}] ${item.message}`);
+  }
+  return lines.join('\n');
+}
+
 export function loadPrFromGh({ repo, pr }) {
   if (!repo) throw new Error('Missing required --repo owner/name argument.');
   if (!pr) throw new Error('Missing required --pr number argument.');
