@@ -1,0 +1,1 @@
+- **Go lane self-test.** New `self-test-go.yml` exercises `go-ci.yml` end-to-end in CI — calling it via a local reusable ref against fixture modules under `test/fixtures/go/` to prove discovery, `go build`/`go vet`/`go test`, and `exclude-modules` (including a self-validating intentionally-broken excluded module). Closes the workflow-level test gap the Go lane shipped with. (#55)
