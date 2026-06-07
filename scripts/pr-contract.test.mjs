@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validatePrContract } from './pr-contract.mjs';
+import { validatePrContract, validatePrTemplate, formatPrTemplateResult } from './pr-contract.mjs';
 
 const validBody = [
   '## Summary',
@@ -113,5 +113,89 @@ describe('validatePrContract', () => {
 
     expect(result.ok).toBe(true);
     expect(result.facts.docsOnly).toBe(true);
+  });
+});
+
+const canonicalTemplate = [
+  '## Summary',
+  '',
+  'TODO: What changed and why?',
+  '',
+  '## Verification',
+  '',
+  '- [ ] TODO',
+  '',
+  '### Verification Notes',
+  '',
+  'TODO: Summarize verification.',
+  '',
+  '## Docs / Changelog',
+  '',
+  'TODO: changelog fragment or no-changelog label.',
+  '',
+  '## Linked Issue',
+  '',
+  'Closes #',
+].join('\n');
+
+// The pre-strict template that caused ArchonVII/hudson-bend#43: `## Changelog`
+// in the wrong position, no `## Docs / Changelog`.
+const staleTemplate = [
+  '## Summary',
+  '',
+  '## Linked Issue',
+  '',
+  'Closes #',
+  '',
+  '## Scope',
+  '',
+  '## Changelog',
+  '',
+  '## Verification',
+  '',
+  '### Verification Notes',
+  '',
+  '## Risks',
+].join('\n');
+
+describe('validatePrTemplate', () => {
+  it('accepts the canonical template structure (unchecked boxes + placeholders are fine)', () => {
+    const result = validatePrTemplate(canonicalTemplate);
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('flags a pre-strict template missing `## Docs / Changelog`', () => {
+    const result = validatePrTemplate(staleTemplate);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.code === 'missing_heading')).toBe(true);
+  });
+
+  it('flags a template missing `### Verification Notes`', () => {
+    const noNotes = [
+      '## Summary',
+      '',
+      '## Verification',
+      '',
+      '- [ ] x',
+      '',
+      '## Docs / Changelog',
+      '',
+      '## Linked Issue',
+    ].join('\n');
+    const result = validatePrTemplate(noNotes);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.code === 'missing_heading')).toBe(true);
+  });
+
+  it('formats a failing result with a sync hint', () => {
+    const report = formatPrTemplateResult(validatePrTemplate(staleTemplate));
+    expect(report).toContain('does NOT conform');
+    expect(report).toContain('Sync');
+  });
+
+  it('formats a passing result', () => {
+    expect(formatPrTemplateResult(validatePrTemplate(canonicalTemplate)))
+      .toContain('conforms');
   });
 });
