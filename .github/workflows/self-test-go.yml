@@ -1,0 +1,45 @@
+name: Self-test (go lane)
+
+# Workflow-level proof that go-ci.yml actually executes in Actions — module
+# discovery, `go build` / `go vet` / `go test`, and `exclude-modules` — by
+# calling it through a LOCAL (./) reusable ref so the in-PR version is the one
+# under test. self-test.yml covers only the classifier scripts (vitest); this
+# is the missing execution proof for the reusable Go lane. See issue #55.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/go-ci.yml"
+      - ".github/workflows/self-test-go.yml"
+      - "test/fixtures/go/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/go-ci.yml"
+      - ".github/workflows/self-test-go.yml"
+      - "test/fixtures/go/**"
+
+concurrency:
+  group: self-test-go-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go-lane:
+    # Calls the in-PR go-ci.yml. It discovers the fixtures under
+    # test/fixtures/go/ via `git ls-files`, then builds/vets/tests `alpha` and
+    # `beta` and MUST skip the intentionally-broken `excluded` module. A green
+    # run proves the lane's shell works AND that exclude-modules skips as
+    # documented (a broken module that wasn't skipped would fail the build).
+    uses: ./.github/workflows/go-ci.yml
+    with:
+      go-versions: '["stable"]'
+      # Fixtures are dependency-less, so they have no go.sum. actions/setup-go
+      # with cache:true + cache-dependency-path '**/go.sum' errors when that
+      # glob matches nothing — and caching isn't what this self-test proves
+      # (the lane's discovery/build/vet/test/exclude shell is). Disable it.
+      cache: false
+      exclude-modules: |
+        test/fixtures/go/excluded/
