@@ -13,10 +13,11 @@
 //   5. policy-only                              — only AGENTS.md / .agent/**
 //   6. code (node)                              — stack=node + code/pkg touched
 //   7. code (python)                            — stack=python + code/pkg touched
-//   8. code (polyglot: node)                    — polyglot + only node paths
-//   9. code (polyglot: python)                  — polyglot + only python paths
-//  10. code (polyglot: node+python)             — polyglot + both
-//  11. pass-through                             — no files / non-PR with minimal stack
+//   8. code (go)                                — stack=go + code/pkg touched
+//   9. code (polyglot: <langs>)                 — polyglot + matched language
+//                                                 paths (node / python / go, in
+//                                                 that order, joined with `+`)
+//  10. pass-through                             — no files / non-PR with minimal stack
 //
 // This module is intentionally pure: it accepts already-fetched PR data via
 // its function signature and performs no network or SDK calls. SDK access
@@ -43,7 +44,7 @@ const DEFAULT_CODE_EXTENSIONS =
 const DEFAULT_PACKAGE_RE =
   /(^|\/)(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|pyproject\.toml|requirements(-dev)?\.txt|uv\.lock|poetry\.lock|Pipfile(\.lock)?|Cargo\.toml|Cargo\.lock|go\.mod|go\.sum)$/;
 
-const VALID_STACKS = new Set(['node', 'python', 'minimal', 'polyglot']);
+const VALID_STACKS = new Set(['node', 'python', 'go', 'minimal', 'polyglot']);
 
 /**
  * @typedef {Object} ClassifyInput
@@ -70,6 +71,7 @@ const VALID_STACKS = new Set(['node', 'python', 'minimal', 'polyglot']);
  * @property {boolean}        outputs.runCi            Legacy aggregate; true if any language CI runs.
  * @property {boolean}        outputs.runNodeCi
  * @property {boolean}        outputs.runPythonCi
+ * @property {boolean}        outputs.runGoCi
  * @property {boolean}        outputs.runDependencyReview
  * @property {boolean}        outputs.runWorkflowValidation
  * @property {boolean}        outputs.runPolicyValidation
@@ -92,6 +94,7 @@ export function classifyPR(input) {
     stack,
     nodePaths = '',
     pythonPaths = '',
+    goPaths = '',
     snapshotPaths = '',
     snapshotTestCommand = '',
     forceFullCiLabel = 'ci:full',
@@ -111,6 +114,7 @@ export function classifyPR(input) {
 
   const nodePatterns = parsePatterns(nodePaths);
   const pythonPatterns = parsePatterns(pythonPaths);
+  const goPatterns = parsePatterns(goPaths);
   const snapshotPatterns = parsePatterns(snapshotPaths);
   const docPrefixList = parsePatterns(docPrefixes);
 
@@ -120,10 +124,11 @@ export function classifyPR(input) {
   if (
     stack === 'polyglot' &&
     nodePatterns.length === 0 &&
-    pythonPatterns.length === 0
+    pythonPatterns.length === 0 &&
+    goPatterns.length === 0
   ) {
     errors.push(
-      'stack=polyglot requires at least one of node-paths or python-paths to be set; both were empty.',
+      'stack=polyglot requires at least one of node-paths, python-paths, or go-paths to be set; all were empty.',
     );
     return failedResult(errors);
   }
@@ -144,6 +149,7 @@ export function classifyPR(input) {
       runCi: stack !== 'minimal',
       runNodeCi: stack === 'node' || (stack === 'polyglot' && nodePatterns.length > 0),
       runPythonCi: stack === 'python' || (stack === 'polyglot' && pythonPatterns.length > 0),
+      runGoCi: stack === 'go' || (stack === 'polyglot' && goPatterns.length > 0),
       runDependencyReview: false, // dep-review only meaningful on PR diff
       runWorkflowValidation: true,
       runPolicyValidation: true,
@@ -243,6 +249,11 @@ export function classifyPR(input) {
     names.some((name) =>
       pythonPatterns.some((pat) => matchPattern(name, pat)),
     );
+  const goTouched =
+    goPatterns.length > 0 &&
+    names.some((name) =>
+      goPatterns.some((pat) => matchPattern(name, pat)),
+    );
 
   // -------- forced-full override -------------------------------------------
   if (forcedFull) {
@@ -255,6 +266,9 @@ export function classifyPR(input) {
       runPythonCi:
         stack === 'python' ||
         (stack === 'polyglot' && pythonPatterns.length > 0),
+      runGoCi:
+        stack === 'go' ||
+        (stack === 'polyglot' && goPatterns.length > 0),
       runDependencyReview: true,
       runWorkflowValidation: true,
       runPolicyValidation: true,
@@ -280,6 +294,7 @@ export function classifyPR(input) {
       runCi: false,
       runNodeCi: false,
       runPythonCi: false,
+      runGoCi: false,
       runDependencyReview: false,
       runWorkflowValidation: false,
       runPolicyValidation: false,
@@ -305,6 +320,7 @@ export function classifyPR(input) {
       runCi: false,
       runNodeCi: false,
       runPythonCi: false,
+      runGoCi: false,
       runDependencyReview: false,
       runWorkflowValidation: false,
       runPolicyValidation: false,
@@ -330,6 +346,7 @@ export function classifyPR(input) {
       runCi: false,
       runNodeCi: false,
       runPythonCi: false,
+      runGoCi: false,
       runDependencyReview: false,
       runWorkflowValidation: true,
       runPolicyValidation: false,
@@ -355,6 +372,7 @@ export function classifyPR(input) {
       runCi: false,
       runNodeCi: false,
       runPythonCi: false,
+      runGoCi: false,
       runDependencyReview: false,
       runWorkflowValidation: false,
       runPolicyValidation: true,
@@ -387,20 +405,25 @@ export function classifyPR(input) {
   // Stack-dependent language-CI fan-out.
   let runNodeCi = false;
   let runPythonCi = false;
+  let runGoCi = false;
 
   if (stack === 'node') {
     runNodeCi = packageTouched || codeTouched;
   } else if (stack === 'python') {
     runPythonCi = packageTouched || codeTouched;
+  } else if (stack === 'go') {
+    runGoCi = packageTouched || codeTouched;
   } else if (stack === 'polyglot') {
     runNodeCi = nodeTouched;
     runPythonCi = pythonTouched;
+    runGoCi = goTouched;
     // Polyglot fallback: if package files were touched but path predicates
     // didn't match (e.g. root package.json + nothing else), run node CI by
     // convention because every npm-workspaces consumer has a root manifest.
     // Consumers that want stricter behavior should put package.json in
-    // node-paths explicitly (recommended in plan §1).
-    if (!runNodeCi && !runPythonCi && packageTouched) {
+    // node-paths explicitly (recommended in plan §1). Go consumers should
+    // list go.mod/go.sum in go-paths so module bumps route to go-ci directly.
+    if (!runNodeCi && !runPythonCi && !runGoCi && packageTouched) {
       runNodeCi = nodePatterns.length > 0;
       runPythonCi = nodePatterns.length === 0 && pythonPatterns.length > 0;
     }
@@ -410,9 +433,10 @@ export function classifyPR(input) {
 
   const outputs = {
     docsOnly: false,
-    runCi: runNodeCi || runPythonCi,
+    runCi: runNodeCi || runPythonCi || runGoCi,
     runNodeCi,
     runPythonCi,
+    runGoCi,
     runDependencyReview: packageTouched,
     runWorkflowValidation: workflowOrHook,
     runPolicyValidation: policy,
@@ -424,7 +448,7 @@ export function classifyPR(input) {
   return {
     ok: true,
     errors,
-    lane: codeLaneLabel(stack, runNodeCi, runPythonCi),
+    lane: codeLaneLabel(stack, runNodeCi, runPythonCi, runGoCi),
     outputs,
     jobsRequired: requiredJobs(outputs, true),
     jobsSkipped: skippedJobs(outputs, true),
@@ -432,15 +456,17 @@ export function classifyPR(input) {
   };
 }
 
-function codeLaneLabel(stack, runNodeCi, runPythonCi) {
+function codeLaneLabel(stack, runNodeCi, runPythonCi, runGoCi) {
   if (stack === 'polyglot') {
-    if (runNodeCi && runPythonCi) return 'code (polyglot: node+python)';
-    if (runNodeCi) return 'code (polyglot: node)';
-    if (runPythonCi) return 'code (polyglot: python)';
-    return 'pass-through';
+    const langs = [];
+    if (runNodeCi) langs.push('node');
+    if (runPythonCi) langs.push('python');
+    if (runGoCi) langs.push('go');
+    return langs.length ? `code (polyglot: ${langs.join('+')})` : 'pass-through';
   }
   if (stack === 'node' && runNodeCi) return 'code (node)';
   if (stack === 'python' && runPythonCi) return 'code (python)';
+  if (stack === 'go' && runGoCi) return 'code (go)';
   if (stack === 'minimal') return 'pass-through (minimal)';
   return 'pass-through';
 }
@@ -453,6 +479,7 @@ function requiredJobs(outputs, runPrContract) {
   if (outputs.runDependencyReview) jobs.push('dependency-review');
   if (outputs.runNodeCi) jobs.push('node-ci');
   if (outputs.runPythonCi) jobs.push('python-ci');
+  if (outputs.runGoCi) jobs.push('go-ci');
   if (outputs.runSnapshotValidation) jobs.push('snapshot-validation');
   jobs.push('decision');
   return jobs;
@@ -465,6 +492,7 @@ function skippedJobs(outputs, isPullRequest) {
     'dependency-review',
     'node-ci',
     'python-ci',
+    'go-ci',
     'snapshot-validation',
   ];
   const required = new Set(requiredJobs(outputs, isPullRequest));
@@ -485,6 +513,7 @@ function failedResult(errors) {
       runCi: false,
       runNodeCi: false,
       runPythonCi: false,
+      runGoCi: false,
       runDependencyReview: false,
       runWorkflowValidation: false,
       runPolicyValidation: false,
