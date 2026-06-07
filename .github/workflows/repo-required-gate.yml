@@ -144,6 +144,51 @@ on:
           case-insensitive.
         type: string
         default: "ci:full"
+      # ---- Go lane (#51) ---------------------------------------------------
+      go-versions:
+        description: 'JSON array of Go versions for the Go lane, e.g. `["stable"]`.'
+        type: string
+        default: '["stable"]'
+      go-paths:
+        description: |
+          Newline-separated patterns selecting Go-owned roots for a polyglot
+          stack (same syntax as node-paths). For stack=polyglot, at least one
+          of node-paths / python-paths / go-paths must be set. Ignored for
+          non-polyglot stacks.
+        type: string
+        default: ""
+      go-exclude-modules:
+        description: "Newline-separated path prefixes whose go.mod roots the Go lane skips (e.g. `tsunami/demo/`)."
+        type: string
+        default: ""
+      go-build-args:
+        description: "Args for `go build` in the Go lane (word-split)."
+        type: string
+        default: "./..."
+      go-test:
+        description: "Run `go test` in the Go lane."
+        type: boolean
+        default: true
+      go-test-args:
+        description: "Args for `go test` in the Go lane (word-split)."
+        type: string
+        default: "./..."
+      go-cgo-enabled:
+        description: "CGO_ENABLED override for the Go lane (`0`/`1`). Empty = Go default."
+        type: string
+        default: ""
+      go-setup-command:
+        description: "Optional command run before Go verification (e.g. install Task)."
+        type: string
+        default: ""
+      go-generate-command:
+        description: "Optional codegen command run once before Go verification (e.g. `task generate`)."
+        type: string
+        default: ""
+      go-verify-generated:
+        description: "Fail if go-generate-command leaves a dirty tree (stale committed generated code)."
+        type: boolean
+        default: false
       workflow-library-ref:
         description: |
           Git ref (tag, branch, or SHA) of ArchonVII/github-workflows used
@@ -166,6 +211,7 @@ jobs:
       run-ci: ${{ steps.detect.outputs.run-ci }}
       run-node-ci: ${{ steps.detect.outputs.run-node-ci }}
       run-python-ci: ${{ steps.detect.outputs.run-python-ci }}
+      run-go-ci: ${{ steps.detect.outputs.run-go-ci }}
       run-dependency-review: ${{ steps.detect.outputs.run-dependency-review }}
       run-workflow-validation: ${{ steps.detect.outputs.run-workflow-validation }}
       run-policy-validation: ${{ steps.detect.outputs.run-policy-validation }}
@@ -193,6 +239,7 @@ jobs:
           STACK: ${{ inputs.stack }}
           NODE_PATHS: ${{ inputs.node-paths }}
           PYTHON_PATHS: ${{ inputs.python-paths }}
+          GO_PATHS: ${{ inputs.go-paths }}
           SNAPSHOT_PATHS: ${{ inputs.snapshot-paths }}
           SNAPSHOT_TEST_COMMAND: ${{ inputs.snapshot-test-command }}
           FORCE_FULL_CI_LABEL: ${{ inputs.force-full-ci-label }}
@@ -239,6 +286,7 @@ jobs:
               stack: process.env.STACK,
               nodePaths: process.env.NODE_PATHS,
               pythonPaths: process.env.PYTHON_PATHS,
+              goPaths: process.env.GO_PATHS,
               snapshotPaths: process.env.SNAPSHOT_PATHS,
               snapshotTestCommand: process.env.SNAPSHOT_TEST_COMMAND,
               forceFullCiLabel: process.env.FORCE_FULL_CI_LABEL,
@@ -252,6 +300,7 @@ jobs:
             core.setOutput('run-ci', String(result.outputs.runCi));
             core.setOutput('run-node-ci', String(result.outputs.runNodeCi));
             core.setOutput('run-python-ci', String(result.outputs.runPythonCi));
+            core.setOutput('run-go-ci', String(result.outputs.runGoCi));
             core.setOutput('run-dependency-review', String(result.outputs.runDependencyReview));
             core.setOutput('run-workflow-validation', String(result.outputs.runWorkflowValidation));
             core.setOutput('run-policy-validation', String(result.outputs.runPolicyValidation));
@@ -518,6 +567,25 @@ jobs:
       typecheck-command: ${{ inputs.python-typecheck-command }}
       test-command: ${{ inputs.python-test-command }}
 
+  go-ci:
+    name: go ci
+    needs:
+      - detect
+      - pr-contract
+    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-go-ci == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
+    uses: ArchonVII/github-workflows/.github/workflows/go-ci.yml@v1
+    with:
+      go-versions: ${{ inputs.go-versions }}
+      os-matrix: ${{ inputs.os-matrix }}
+      exclude-modules: ${{ inputs.go-exclude-modules }}
+      run-tests: ${{ inputs.go-test }}
+      build-args: ${{ inputs.go-build-args }}
+      test-args: ${{ inputs.go-test-args }}
+      cgo-enabled: ${{ inputs.go-cgo-enabled }}
+      setup-command: ${{ inputs.go-setup-command }}
+      generate-command: ${{ inputs.go-generate-command }}
+      verify-generated: ${{ inputs.go-verify-generated }}
+
   snapshot-validation:
     name: snapshot validation
     needs:
@@ -565,6 +633,7 @@ jobs:
       - dependency-review
       - node-ci
       - python-ci
+      - go-ci
       - snapshot-validation
     if: always()
     runs-on: ubuntu-latest
@@ -576,6 +645,7 @@ jobs:
           OK: ${{ needs.detect.outputs.ok }}
           RUN_NODE_CI: ${{ needs.detect.outputs.run-node-ci }}
           RUN_PYTHON_CI: ${{ needs.detect.outputs.run-python-ci }}
+          RUN_GO_CI: ${{ needs.detect.outputs.run-go-ci }}
           RUN_DEPENDENCY_REVIEW: ${{ inputs.run-dependency-review && needs.detect.outputs.run-dependency-review == 'true' }}
           RUN_WORKFLOW_VALIDATION: ${{ inputs.run-workflow-validation && needs.detect.outputs.run-workflow-validation == 'true' }}
           RUN_POLICY_VALIDATION: ${{ inputs.run-policy-validation && needs.detect.outputs.run-policy-validation == 'true' }}
@@ -587,6 +657,7 @@ jobs:
           DEPENDENCY_RESULT: ${{ needs.dependency-review.result }}
           NODE_RESULT: ${{ needs.node-ci.result }}
           PYTHON_RESULT: ${{ needs.python-ci.result }}
+          GO_RESULT: ${{ needs.go-ci.result }}
           SNAPSHOT_RESULT: ${{ needs.snapshot-validation.result }}
           EVENT_NAME: ${{ github.event_name }}
           RUN_PR_CONTRACT: ${{ inputs.run-pr-contract }}
@@ -632,6 +703,10 @@ jobs:
 
           if [ "$RUN_PYTHON_CI" = "true" ]; then
             require_success "python ci" "$PYTHON_RESULT"
+          fi
+
+          if [ "$RUN_GO_CI" = "true" ]; then
+            require_success "go ci" "$GO_RESULT"
           fi
 
           if [ "$RUN_SNAPSHOT_VALIDATION" = "true" ]; then

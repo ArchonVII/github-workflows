@@ -1,0 +1,200 @@
+name: Go CI (reusable)
+
+# Generic multi-module Go verification for repos with one or many Go modules.
+#
+# Module discovery uses `git ls-files`, NOT a filesystem `find`: tracked go.mod
+# files only. This deliberately skips gitignored build artifacts (e.g.
+# dist/<scaffold>/go.mod) and never recurses into gitignored generated dirs
+# whose conflicting package decls would break `go build ./...`. Each discovered
+# module root is verified independently: `go build`, `go vet`, `go test`.
+#
+# Designed to be called from repo-required-gate.yml's `go-ci` job, but usable
+# standalone. Every step is opt-out via inputs.
+
+on:
+  workflow_call:
+    inputs:
+      go-versions:
+        description: 'JSON array of Go versions for setup-go, e.g. `["1.26.x"]` or `["stable"]`.'
+        type: string
+        default: '["stable"]'
+      os-matrix:
+        description: 'JSON array of OS runners, e.g. `["ubuntu-latest"]`.'
+        type: string
+        default: '["ubuntu-latest"]'
+      exclude-modules:
+        description: |
+          Newline-separated path prefixes (relative to repo root) whose go.mod
+          roots are skipped — e.g. `tsunami/demo/`. A module dir is excluded
+          when `<dir>/` starts with any prefix. Comments (`#`) and blanks
+          ignored.
+        type: string
+        default: ""
+      run-build:
+        description: "Run `go build` per module. Empty/false skips."
+        type: boolean
+        default: true
+      run-vet:
+        description: "Run `go vet ./...` per module."
+        type: boolean
+        default: true
+      run-tests:
+        description: "Run `go test` per module."
+        type: boolean
+        default: true
+      build-args:
+        description: "Args for `go build` (word-split). Default builds all packages."
+        type: string
+        default: "./..."
+      test-args:
+        description: "Args for `go test` (word-split)."
+        type: string
+        default: "./..."
+      cgo-enabled:
+        description: "CGO_ENABLED override (`0` or `1`). Empty = Go default (1 when a C compiler is present)."
+        type: string
+        default: ""
+      cache:
+        description: "Enable setup-go module/build cache (keyed on all go.sum)."
+        type: boolean
+        default: true
+      setup-command:
+        description: |
+          Optional shell command run after checkout + Go setup, before
+          generate/verify (e.g. install Task or system deps). Empty = skip.
+        type: string
+        default: ""
+      generate-command:
+        description: |
+          Optional codegen command run once at repo root before module
+          verification (e.g. `task generate`). Empty = skip.
+        type: string
+        default: ""
+      verify-generated:
+        description: |
+          When true (and generate-command set), fail if codegen leaves a dirty
+          git tree — catches stale committed generated output (e.g. Go→TS
+          bindings). No-op when generate-command is empty.
+        type: boolean
+        default: false
+
+jobs:
+  ci:
+    name: ${{ matrix.os }} / go ${{ matrix.go }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ${{ fromJSON(inputs.go-versions) }}
+        os: ${{ fromJSON(inputs.os-matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: ${{ inputs.cache }}
+          cache-dependency-path: ${{ inputs.cache && '**/go.sum' || '' }}
+
+      - name: Setup command
+        if: inputs.setup-command != ''
+        shell: bash
+        run: ${{ inputs.setup-command }}
+
+      - name: Generate
+        if: inputs.generate-command != ''
+        shell: bash
+        run: ${{ inputs.generate-command }}
+
+      - name: Verify generated code is in sync
+        if: inputs.generate-command != '' && inputs.verify-generated
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::generate-command left a dirty tree — committed generated code is out of sync. Run the generate command locally and commit the result."
+            git --no-pager diff --stat
+            exit 1
+          fi
+          echo "Generated code is in sync (clean tree)."
+
+      - name: Discover and verify Go modules
+        shell: bash
+        env:
+          RUN_BUILD: ${{ inputs.run-build }}
+          RUN_VET: ${{ inputs.run-vet }}
+          RUN_TESTS: ${{ inputs.run-tests }}
+          BUILD_ARGS: ${{ inputs.build-args }}
+          TEST_ARGS: ${{ inputs.test-args }}
+          CGO_ENABLED_INPUT: ${{ inputs.cgo-enabled }}
+          EXCLUDE_MODULES: ${{ inputs.exclude-modules }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "$CGO_ENABLED_INPUT" ]; then
+            export CGO_ENABLED="$CGO_ENABLED_INPUT"
+          fi
+
+          # Exclusion prefixes (strip comments + blanks).
+          excludes="$(printf '%s\n' "$EXCLUDE_MODULES" | sed -e 's/#.*//' -e 's/[[:space:]]*$//' | grep -v '^[[:space:]]*$' || true)"
+
+          excluded() {
+            local dir="$1/" pre
+            [ -z "$excludes" ] && return 1
+            while IFS= read -r pre; do
+              [ -z "$pre" ] && continue
+              case "$dir" in
+                "$pre"*) return 0 ;;
+              esac
+            done <<< "$excludes"
+            return 1
+          }
+
+          # Tracked go.mod roots only — git ls-files skips gitignored artifacts.
+          modules="$(git ls-files | grep -E '(^|/)go\.mod$' | xargs -r -n1 dirname | sort -u)"
+          if [ -z "$modules" ]; then
+            echo "::error::no tracked go.mod found; is stack=go correct for this repo?"
+            exit 1
+          fi
+
+          rc=0
+          {
+            echo "### Go CI — module verification"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while IFS= read -r dir; do
+            [ -z "$dir" ] && continue
+            if excluded "$dir"; then
+              echo "skip (exclude-modules): $dir"
+              echo "- \`$dir\` — skipped (exclude-modules)" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            echo "::group::module $dir"
+            if (
+              cd "$dir"
+              go mod download
+              if [ "$RUN_BUILD" = "true" ]; then
+                # shellcheck disable=SC2086
+                go build $BUILD_ARGS
+              fi
+              if [ "$RUN_VET" = "true" ]; then
+                go vet ./...
+              fi
+              if [ "$RUN_TESTS" = "true" ]; then
+                # shellcheck disable=SC2086
+                go test $TEST_ARGS
+              fi
+            ); then
+              echo "- \`$dir\` — ok" >> "$GITHUB_STEP_SUMMARY"
+            else
+              rc=1
+              echo "- \`$dir\` — FAILED" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            echo "::endgroup::"
+          done <<< "$modules"
+
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::one or more Go modules failed verification (see step summary)."
+          fi
+          exit $rc
