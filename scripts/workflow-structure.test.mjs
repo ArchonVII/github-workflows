@@ -115,12 +115,23 @@ describe('repo-required-gate workflow node delegation', () => {
 });
 
 describe('repo-required-gate caller example', () => {
-  it('does not rerun the required gate for arbitrary label changes', () => {
+  it('runs the required gate only for ci:full label changes', () => {
     const body = readExample('repo-required-gate');
 
-    expect(body).toContain('types: [opened, edited, synchronize, reopened, ready_for_review]');
-    expect(body).not.toMatch(/^\s*labeled,?\s*$/m);
-    expect(body).not.toMatch(/^\s*unlabeled,?\s*$/m);
+    expect(body).toContain(
+      'types: [opened, edited, synchronize, reopened, ready_for_review, labeled, unlabeled]',
+    );
+    expect(body).toContain("github.event.action != 'labeled'");
+    expect(body).toContain("github.event.action != 'unlabeled'");
+    expect(body).toContain("github.event.label.name == 'ci:full'");
+
+    const jobBlock = workflowJobBlock(body, 'repo-required-gate');
+    expect(jobBlock).toContain('if: >-');
+    expect(jobBlock).toContain("github.event.label.name == 'ci:full'");
+
+    const concurrencyBlock = body.slice(body.indexOf('concurrency:'), body.indexOf('jobs:'));
+    expect(concurrencyBlock).toContain('cancel-in-progress: >-');
+    expect(concurrencyBlock).toContain("github.event.label.name == 'ci:full'");
   });
 });
 
