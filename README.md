@@ -76,10 +76,11 @@ The required-gate caller listens for `labeled` and `unlabeled` events only to
 preserve the `ci:full` escape hatch. The caller job and concurrency expression
 are guarded so `ci:full` is the only label change that can run or cancel the
 required branch-protection gate. Other labels such as `no-changelog` may create
-a skipped caller run, but they do not start `repo-required-gate / decision` and
-do not cancel an in-flight required-gate run. If a repo overrides the
-`force-full-ci-label` input, update the caller guard and concurrency label name
-to match.
+a skipped caller run in a separate `label-skip-*` concurrency group, but they do
+not start `repo-required-gate / decision`, cancel an in-flight required-gate
+run, or replace a pending gate run in the real required-gate concurrency group.
+If a repo overrides the `force-full-ci-label` input, update the caller guard and
+concurrency label name to match.
 
 For agent closeout, use the shared local preflight instead of direct promotion:
 

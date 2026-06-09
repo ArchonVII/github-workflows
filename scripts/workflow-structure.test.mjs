@@ -130,6 +130,9 @@ describe('repo-required-gate caller example', () => {
     expect(jobBlock).toContain("github.event.label.name == 'ci:full'");
 
     const concurrencyBlock = body.slice(body.indexOf('concurrency:'), body.indexOf('jobs:'));
+    expect(concurrencyBlock).toContain('group: >-');
+    expect(concurrencyBlock).toContain("format('label-skip-{0}', github.event.label.name)");
+    expect(concurrencyBlock).toContain("'gate'");
     expect(concurrencyBlock).toContain('cancel-in-progress: >-');
     expect(concurrencyBlock).toContain("github.event.label.name == 'ci:full'");
   });
