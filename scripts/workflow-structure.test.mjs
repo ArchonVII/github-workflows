@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const readWorkflow = (name) => readFileSync(`.github/workflows/${name}.yml`, 'utf8');
+const readExample = (name) => readFileSync(`examples/${name}.yml`, 'utf8');
 
 const workflowJobBlock = (body, job) => {
   const marker = `  ${job}:`;
@@ -110,6 +111,16 @@ describe('repo-required-gate workflow node delegation', () => {
     expect(body).toContain('doc-only-path-prefixes:');
     expect(body).toContain('DOC_EXT_LIST: ${{ inputs.doc-only-extensions }}');
     expect(body).toContain('DOC_PREFIXES: ${{ inputs.doc-only-path-prefixes }}');
+  });
+});
+
+describe('repo-required-gate caller example', () => {
+  it('does not rerun the required gate for arbitrary label changes', () => {
+    const body = readExample('repo-required-gate');
+
+    expect(body).toContain('types: [opened, edited, synchronize, reopened, ready_for_review]');
+    expect(body).not.toMatch(/^\s*labeled,?\s*$/m);
+    expect(body).not.toMatch(/^\s*unlabeled,?\s*$/m);
   });
 });
 

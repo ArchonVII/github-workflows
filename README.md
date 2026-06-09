@@ -72,6 +72,12 @@ repo-required-gate / decision
 
 Keep targeted checks inside the gate or leave them non-required. Do not make branch protection depend on workflows that can be skipped by path filters; GitHub can leave those required checks pending.
 
+The required-gate caller intentionally does not listen for `labeled` or
+`unlabeled` events. Labels such as `no-changelog` should not cancel and restart
+the required branch-protection gate. The `ci:full` label is still honored by the
+classifier when the gate runs; after applying it to an already-open PR, rerun the
+workflow, push a new commit, or use another normal PR event to refresh the gate.
+
 For agent closeout, use the shared local preflight instead of direct promotion:
 
 ```bash
