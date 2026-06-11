@@ -1,0 +1,189 @@
+{
+  "tool": "archon-setup",
+  "toolVersion": "0.1.0-pre",
+  "createdAt": "2026-06-11T22:26:04.518Z",
+  "owner": "ArchonVII",
+  "repo": "github-workflows",
+  "visibility": "private",
+  "sourceSnapshots": {
+    "githubWorkflows": {
+      "source": "ArchonVII/github-workflows",
+      "ref": "v1",
+      "sha": "af0ac6e99683c107d5a420607642ff341e92713e",
+      "capturedAt": "2026-06-11T20:29:04.914Z",
+      "path": "src/snapshots/github-workflows/"
+    },
+    "repoTemplate": {
+      "source": "ArchonVII/repo-template",
+      "ref": "main",
+      "sha": "d74d23cdddb735de505302b92db6d5acf187e601",
+      "capturedAt": "2026-06-11T20:29:05.009Z",
+      "path": "src/snapshots/repo-template/"
+    },
+    "orgDefaults": {
+      "source": "ArchonVII/.github",
+      "ref": "main",
+      "sha": "1962f27c6ef13c07c755706144e8bb12a6f5203e",
+      "capturedAt": "2026-06-11T20:29:05.012Z",
+      "path": "src/snapshots/org-defaults/"
+    }
+  },
+  "selectedFeatures": [
+    "foundation.readme",
+    "foundation.license",
+    "foundation.gitignore",
+    "foundation.agents",
+    "foundation.claude-md",
+    "foundation.gemini-md",
+    "foundation.coordination",
+    "foundation.hooks",
+    "foundation.gitattributes",
+    "foundation.changelog",
+    "foundation.actionlint",
+    "foundation.codeowners",
+    "foundation.dependabot",
+    "foundation.pr-template",
+    "foundation.git-init",
+    "agent-workflow.check-map",
+    "agent-lifecycle.baseline",
+    "agent-workflow.doc-sweep"
+  ],
+  "createdFiles": [
+    {
+      "path": "LICENSE",
+      "source": "github:licenses/MIT",
+      "spdx": "MIT"
+    },
+    {
+      "path": "AGENTS.md",
+      "source": "snapshot:repo-template/AGENTS.md"
+    },
+    {
+      "path": "docs/repo-update-log.md",
+      "source": "snapshot:repo-template/docs/repo-update-log.md"
+    },
+    {
+      "path": ".agent/startup-baseline.json",
+      "source": "snapshot:repo-template/.agent/startup-baseline.json"
+    },
+    {
+      "path": "docs/plans/README.md",
+      "source": "snapshot:repo-template/docs/plans/README.md"
+    },
+    {
+      "path": "CLAUDE.md",
+      "source": "template:claude-md"
+    },
+    {
+      "path": "GEMINI.md",
+      "source": "template:gemini-md"
+    },
+    {
+      "path": ".agent/coordination/README.md",
+      "source": "snapshot:repo-template/.agent/coordination/README.md"
+    },
+    {
+      "path": ".githooks/commit-msg",
+      "source": "snapshot:repo-template/.githooks/commit-msg"
+    },
+    {
+      "path": ".githooks/pre-commit",
+      "source": "snapshot:repo-template/.githooks/pre-commit"
+    },
+    {
+      "path": ".githooks/scripts/install-githooks.sh",
+      "source": "snapshot:repo-template/.githooks/scripts/install-githooks.sh"
+    },
+    {
+      "path": ".githooks/scripts/owner-maintenance.sh",
+      "source": "snapshot:repo-template/.githooks/scripts/owner-maintenance.sh"
+    },
+    {
+      "path": ".githooks/scripts/test-owner-maintenance.sh",
+      "source": "snapshot:repo-template/.githooks/scripts/test-owner-maintenance.sh"
+    },
+    {
+      "path": ".githooks/scripts/checkout-role.sh",
+      "source": "snapshot:repo-template/.githooks/scripts/checkout-role.sh"
+    },
+    {
+      "path": ".githooks/scripts/checkout-doctor.sh",
+      "source": "snapshot:repo-template/.githooks/scripts/checkout-doctor.sh"
+    },
+    {
+      "path": ".githooks/scripts/test-checkout-role.sh",
+      "source": "snapshot:repo-template/.githooks/scripts/test-checkout-role.sh"
+    },
+    {
+      "path": ".gitattributes",
+      "source": "snapshot:repo-template/.gitattributes"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "source": "snapshot:repo-template/CHANGELOG.md"
+    },
+    {
+      "path": ".changelog/unreleased/README.md",
+      "source": "snapshot:repo-template/.changelog/unreleased/README.md"
+    },
+    {
+      "path": ".github/CODEOWNERS",
+      "source": "template:owner"
+    },
+    {
+      "path": ".github/dependabot.yml",
+      "source": "snapshot:repo-template/.github/dependabot.yml"
+    },
+    {
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "source": "snapshot:repo-template/.github/PULL_REQUEST_TEMPLATE.md"
+    },
+    {
+      "path": ".agent/check-map.yml",
+      "source": "snapshot:repo-template/.agent/check-map.yml"
+    },
+    {
+      "path": "scripts/agent/lib.mjs",
+      "source": "snapshot:repo-template/scripts/agent/lib.mjs"
+    },
+    {
+      "path": "scripts/agent/start-task.mjs",
+      "source": "snapshot:repo-template/scripts/agent/start-task.mjs"
+    },
+    {
+      "path": "scripts/agent/status.mjs",
+      "source": "snapshot:repo-template/scripts/agent/status.mjs"
+    },
+    {
+      "path": "scripts/agent/prune.mjs",
+      "source": "snapshot:repo-template/scripts/agent/prune.mjs"
+    },
+    {
+      "path": "scripts/agent/pr-body.mjs",
+      "source": "snapshot:repo-template/scripts/agent/pr-body.mjs"
+    },
+    {
+      "path": "package.json",
+      "source": "merged:agent-lifecycle"
+    },
+    {
+      "path": "scripts/doc-sweep/lib.mjs",
+      "source": "snapshot:repo-template/scripts/doc-sweep/lib.mjs"
+    },
+    {
+      "path": "scripts/doc-sweep/git.mjs",
+      "source": "snapshot:repo-template/scripts/doc-sweep/git.mjs"
+    },
+    {
+      "path": "scripts/doc-sweep/sweep.mjs",
+      "source": "snapshot:repo-template/scripts/doc-sweep/sweep.mjs"
+    },
+    {
+      "path": "docs/agent-process/doc-sweep.md",
+      "source": "snapshot:repo-template/docs/agent-process/doc-sweep.md"
+    }
+  ],
+  "skippedFiles": [],
+  "remoteActions": [],
+  "postChecks": []
+}

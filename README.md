@@ -4,6 +4,8 @@ Reusable GitHub Actions workflows + a per-repo setup script, shared across all r
 
 Each workflow uses `on: workflow_call`. A consumer repo opts in by adding a tiny caller workflow that holds the actual trigger (`pull_request`, `schedule`, etc.) and `uses:` the reusable version. Pin to `@v1` so an upstream change doesn't deploy silently everywhere.
 
+Agent and maintainer governance for this repository lives in [`AGENTS.md`](AGENTS.md). Start there before changing workflows, setup scripts, or PR policy helpers; operational changes are logged in [`docs/repo-update-log.md`](docs/repo-update-log.md).
+
 Companion repos:
 
 - **[`ArchonVII/.github`](https://github.com/ArchonVII/.github)** — auto-applied community health files (PR template, issue forms, `SECURITY.md`, `release.yml`). See [`STARTER.md`](https://github.com/ArchonVII/.github/blob/main/STARTER.md) for the full document-policy guide.
