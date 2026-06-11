@@ -1,1 +1,14 @@
 node_modules/
+
+# Agent / local runtime state
+.claude/
+.gemini/
+.codex/
+task_plan.md
+findings.md
+progress.md
+.agent/current-task.json
+
+# archon-setup runtime event logs are local; anomaly handoff files may be tracked.
+.archon/*
+!.archon/anomalies-thispr.md
