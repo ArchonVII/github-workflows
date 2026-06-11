@@ -1,192 +1,274 @@
 # github-workflows
 
-Reusable GitHub Actions workflows + a per-repo setup script, shared across all repos under [@ArchonVII](https://github.com/ArchonVII).
+Reusable GitHub Actions workflow provider for
+[@ArchonVII](https://github.com/ArchonVII) repositories.
 
-Each workflow uses `on: workflow_call`. A consumer repo opts in by adding a tiny caller workflow that holds the actual trigger (`pull_request`, `schedule`, etc.) and `uses:` the reusable version. Pin to `@v1` so an upstream change doesn't deploy silently everywhere.
+This repo owns shared workflow bodies, caller examples, PR contract helpers, and
+repo setup utilities. Consumer repos opt in by adding small caller workflows
+that define their own triggers and call these reusable workflows with
+`uses: ArchonVII/github-workflows/.github/workflows/<name>.yml@v1`.
 
-Companion repos:
+This repo is not an agent persona system. The older admiral/lieutenant-style
+role language is retired as operating guidance. Current policy is implemented
+through normal GitHub primitives: issues, branches, worktrees, PR contracts,
+branch protection, CI checks, labels, reviews, and explicit workflow inputs.
 
-- **[`ArchonVII/.github`](https://github.com/ArchonVII/.github)** — auto-applied community health files (PR template, issue forms, `SECURITY.md`, `release.yml`). See [`STARTER.md`](https://github.com/ArchonVII/.github/blob/main/STARTER.md) for the full document-policy guide.
-- **[`ArchonVII/repo-template`](https://github.com/ArchonVII/repo-template)** — clone-and-go bootstrap with all the caller workflows pre-wired. Mark "Use this template" when creating a new repo.
+## Companion Repos
 
-For the current skill, script, and agent responsibility map around the release
-workflow, see [`docs/release-workflow-breakdown.md`](docs/release-workflow-breakdown.md).
+- [`ArchonVII/.github`](https://github.com/ArchonVII/.github) provides
+  organization-level community health defaults such as issue forms, PR template,
+  `SECURITY.md`, release config, and the starter documentation policy.
+- [`ArchonVII/repo-template`](https://github.com/ArchonVII/repo-template)
+  bootstraps new repos with caller workflows, repo-local agent policy,
+  changelog conventions, dependency config, and baseline docs.
+- `ArchonVII/github-workflows` is this provider repo. It keeps reusable workflow
+  logic in one place while consumer repos keep local triggers and inputs.
 
----
+## Operating Model
 
-## Workflows
+Every reusable workflow in this repo uses `on: workflow_call`. A consumer repo
+adds a thin caller under `.github/workflows/`, chooses the trigger
+(`pull_request`, `merge_group`, `schedule`, `workflow_dispatch`, etc.), grants
+the required permissions, and pins the reusable workflow to `@v1`.
 
-### PR contract & hygiene
-
-| Workflow                                                             | Purpose                                                                                                                                       | Example                                                              |
-| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [`pr-policy.yml`](.github/workflows/pr-policy.yml)                   | Enforce the shared PR contract validator: canonical title/body structure, linked issue, verification notes, and checked verification. Doc-only PRs skip body ceremony. Also warns on role-separation concerns and can hard-gate protected agent PR paths. Also runs `actionlint`. | [`examples/pr-policy.yml`](examples/pr-policy.yml)                   |
-| [`pr-body-autoinject.yml`](.github/workflows/pr-body-autoinject.yml) | When a bot opens a non-doc PR with a freehand body, prepend an intentionally incomplete scaffold that agents must fill before ready-for-review. Human PRs untouched. | [`examples/pr-body-autoinject.yml`](examples/pr-body-autoinject.yml) |
-| [`semantic-pr-title.yml`](.github/workflows/semantic-pr-title.yml)   | Enforce Conventional Commits format on PR titles. Wraps `amannn/action-semantic-pull-request@v5`.                                             | [`examples/semantic-pr-title.yml`](examples/semantic-pr-title.yml)   |
-| [`branch-naming.yml`](.github/workflows/branch-naming.yml)           | Enforce the `open`-skill branch convention (`agent/<tool>/<issue>-<slug>` or `<type>/<slug>`). Configurable regex.                            | [`examples/branch-naming.yml`](examples/branch-naming.yml)           |
-| [`changelog-fragment.yml`](.github/workflows/changelog-fragment.yml) | Require a new file under `.changelog/unreleased/` whenever a PR touches `src/`. Skippable via `no-changelog` label.                           | [`examples/changelog-fragment.yml`](examples/changelog-fragment.yml) |
-| [`labeler.yml`](.github/workflows/labeler.yml)                       | Thin wrapper around `actions/labeler@v5`.                                                                                                     | [`examples/labeler.yml`](examples/labeler.yml)                       |
-
-### Security & dependencies
-
-| Workflow                                                                   | Purpose                                                                                                                             | Example                                                                    |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| [`dependency-review.yml`](.github/workflows/dependency-review.yml)         | Block PRs that introduce vulnerable or copyleft-licensed dependencies. Operates on the lockfile diff.                               | [`examples/dependency-review.yml`](examples/dependency-review.yml)         |
-| [`auto-merge-dependabot.yml`](.github/workflows/auto-merge-dependabot.yml) | Auto-merge Dependabot PRs that match the allowed update types (default: patch + minor) and pass CI.                                 | [`examples/auto-merge-dependabot.yml`](examples/auto-merge-dependabot.yml) |
-
-### Generic CI
-
-| Workflow                                           | Purpose                                                                                                                                    | Example                                            |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
-| [`repo-required-gate.yml`](.github/workflows/repo-required-gate.yml) | Always-reporting PR gate for branch protection. Detects changed files, runs relevant internal checks, and exposes one stable `repo-required-gate / decision` check. | [`examples/repo-required-gate.yml`](examples/repo-required-gate.yml) |
-| [`node-ci.yml`](.github/workflows/node-ci.yml)     | Install + lint + typecheck + test for Node projects. Auto-detects `npm` / `pnpm` / `yarn` from lockfile. Matrix over Node versions and OS. | [`examples/node-ci.yml`](examples/node-ci.yml)     |
-| [`python-ci.yml`](.github/workflows/python-ci.yml) | Install (uv or pip) + ruff lint + ruff format-check + pyright + pytest. Each step opt-out. Matrix over Python versions and OS.             | [`examples/python-ci.yml`](examples/python-ci.yml) |
-| [`go-ci.yml`](.github/workflows/go-ci.yml)         | Discover every tracked `go.mod` (`git ls-files`, skipping build artifacts) and run `go build` / `go vet` / `go test` per module. Optional codegen + dirty-tree drift check. Matrix over Go versions and OS. | [`examples/go-ci.yml`](examples/go-ci.yml)         |
-
-### Agent workflow
-
-| Workflow                                                     | Purpose                                                                                                                                                                                                                                                       | Example                                                      |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| [`anomaly-triage.yml`](.github/workflows/anomaly-triage.yml) | Read `.archon/anomalies-thispr.md` written by an agent during a PR. Classify each entry as related-to-PR (post sticky review comment) or unrelated (file a new issue, optionally in a downstream repo). Idempotent across re-runs. Tool-agnostic by contract. | [`examples/anomaly-triage.yml`](examples/anomaly-triage.yml) |
-
-### Repo hygiene
-
-| Workflow                                                         | Purpose                                                                                                      | Example                                                          |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| [`stale.yml`](.github/workflows/stale.yml)                       | Auto-mark and auto-close stale issues/PRs. Wraps `actions/stale@v9`.                                         | [`examples/stale.yml`](examples/stale.yml)                       |
-| [`lock-threads.yml`](.github/workflows/lock-threads.yml)         | Lock closed issues/PRs after N days of inactivity. Wraps `dessant/lock-threads@v5`.                          | [`examples/lock-threads.yml`](examples/lock-threads.yml)         |
-| [`anomaly-to-issue.yml`](.github/workflows/anomaly-to-issue.yml) | On PR merge, scan for new files in `.anomalies/` and promote each to a GitHub issue with parsed frontmatter. | [`examples/anomaly-to-issue.yml`](examples/anomaly-to-issue.yml) |
-
----
-
-## How to consume
-
-In any repo where you want one of these, copy the example caller into `.github/workflows/` and commit it. Inputs are all optional; the PR contract defaults are intentionally strict for ready-for-review.
-
-For branch protection, prefer the single-gate contract:
+The recommended branch-protection model is one stable required check:
 
 ```text
-Required status check:
 repo-required-gate / decision
 ```
 
-Keep targeted checks inside the gate or leave them non-required. Do not make branch protection depend on workflows that can be skipped by path filters; GitHub can leave those required checks pending.
+Keep path filtering and stack-specific work inside the reusable gate. Do not
+make branch protection depend on checks that can be skipped by caller-level path
+filters, because GitHub can leave those required checks pending.
 
-The required-gate caller listens for `labeled` and `unlabeled` events only to
-preserve the `ci:full` escape hatch. The caller job and concurrency expression
-are guarded so `ci:full` is the only label change that can run or cancel the
-required branch-protection gate. Other labels such as `no-changelog` may create
-a skipped caller run in a separate `label-skip-*` concurrency group, but they do
-not start `repo-required-gate / decision`, cancel an in-flight required-gate
-run, or replace a pending gate run in the real required-gate concurrency group.
-If a repo overrides the `force-full-ci-label` input, update the caller guard and
-concurrency label name to match.
+The `v1`, `v2`, etc. tags are the public API surface. Backwards-compatible fixes
+and additive workflows land on `main` and can move the `v1` tag forward.
+Breaking workflow or input changes require a new major tag. Consumers that need
+full immutability can pin to a commit SHA instead of `@v1`.
 
-For agent closeout, use the shared local preflight instead of direct promotion:
+## Workflow Inventory
 
-```bash
-npm run agent:close-preflight -- --repo OWNER/REPO --pr 123
-npm run agent:pr-ready -- --repo OWNER/REPO --pr 123
-```
+This repo currently contains 18 reusable `workflow_call` workflows and 2
+provider self-test workflows.
 
-Agents must not run `gh pr ready` directly. `agent:pr-ready` fetches the PR title, body, head branch, and changed files; runs `scripts/pr-contract.mjs`; prints exact repair failures; and only then calls `gh pr ready`.
+### Required Gate And PR Policy
 
-The canonical scaffold lives at [`contracts/pr-template.md`](contracts/pr-template.md). It is intentionally invalid until the TODOs are replaced with real summary, verification, docs/changelog, and issue-link content.
+| Workflow | Purpose | Caller |
+| --- | --- | --- |
+| [`repo-required-gate.yml`](.github/workflows/repo-required-gate.yml) | Single required branch-protection gate. Detects the PR lane and runs the relevant checks before publishing `repo-required-gate / decision`. Supports minimal, Node, Python, Go, polyglot, workflow-only, policy-only, dependency, snapshot, and forced-full lanes. | [`examples/repo-required-gate.yml`](examples/repo-required-gate.yml) |
+| [`pr-policy.yml`](.github/workflows/pr-policy.yml) | Validates the PR contract: canonical body sections, linked issue, verification evidence, checked verification item, branch naming, doc-only handling, optional evidence parsing, optional role-separation enforcement, and optional actionlint. | [`examples/pr-policy.yml`](examples/pr-policy.yml) |
+| [`pr-body-autoinject.yml`](.github/workflows/pr-body-autoinject.yml) | Adds an intentionally incomplete PR-body scaffold when bots open non-doc PRs with freehand bodies. Human PRs are left alone. | [`examples/pr-body-autoinject.yml`](examples/pr-body-autoinject.yml) |
+| [`semantic-pr-title.yml`](.github/workflows/semantic-pr-title.yml) | Enforces Conventional Commit-style PR titles through `amannn/action-semantic-pull-request@v5`. | [`examples/semantic-pr-title.yml`](examples/semantic-pr-title.yml) |
+| [`branch-naming.yml`](.github/workflows/branch-naming.yml) | Enforces the branch convention, including `agent/<tool>/<issue>-<slug>` for agent lanes. | [`examples/branch-naming.yml`](examples/branch-naming.yml) |
+
+### CI And Workflow Validation
+
+| Workflow | Purpose | Caller |
+| --- | --- | --- |
+| [`node-ci.yml`](.github/workflows/node-ci.yml) | Node install, lint, typecheck, test, and build. Auto-detects `npm`, `pnpm`, or `yarn` from lockfiles and supports version/OS matrices. | [`examples/node-ci.yml`](examples/node-ci.yml) |
+| [`python-ci.yml`](.github/workflows/python-ci.yml) | Python install, ruff lint, ruff format check, pyright, and pytest. Supports uv or pip and version/OS matrices. | [`examples/python-ci.yml`](examples/python-ci.yml) |
+| [`go-ci.yml`](.github/workflows/go-ci.yml) | Discovers tracked `go.mod` files, then runs build, vet, and test per module. Supports excluded modules, optional code generation, dirty-tree drift checks, CGO settings, and version/OS matrices. | [`examples/go-ci.yml`](examples/go-ci.yml) |
+| [`actionlint.yml`](.github/workflows/actionlint.yml) | Reusable workflow syntax validation using `raven-actions/actionlint@v2`, with pinned actionlint version and optional shellcheck. | Use from repo-template or call directly. |
+
+### Security And Dependencies
+
+| Workflow | Purpose | Caller |
+| --- | --- | --- |
+| [`dependency-review.yml`](.github/workflows/dependency-review.yml) | Blocks vulnerable or disallowed dependency changes based on the lockfile diff. | [`examples/dependency-review.yml`](examples/dependency-review.yml) |
+| [`auto-merge-dependabot.yml`](.github/workflows/auto-merge-dependabot.yml) | Enables auto-merge for allowed Dependabot update types after required checks pass. | [`examples/auto-merge-dependabot.yml`](examples/auto-merge-dependabot.yml) |
+
+### Docs, Anomalies, And Repo Hygiene
+
+| Workflow | Purpose | Caller |
+| --- | --- | --- |
+| [`changelog-fragment.yml`](.github/workflows/changelog-fragment.yml) | Requires an added `.changelog/unreleased/*.md` fragment when configured source paths change, with a label-based opt-out. | [`examples/changelog-fragment.yml`](examples/changelog-fragment.yml) |
+| [`doc-orphan-detector.yml`](.github/workflows/doc-orphan-detector.yml) | Scheduled backstop for committed docs stranded on pushed branches with no open PR. Reports path-only tracking issues and never commits or pushes. | [`examples/doc-orphan-detector.yml`](examples/doc-orphan-detector.yml) |
+| [`anomaly-triage.yml`](.github/workflows/anomaly-triage.yml) | Reads a per-PR anomalies file, classifies entries as PR-related or unrelated, posts sticky review comments, and can open downstream issues. | [`examples/anomaly-triage.yml`](examples/anomaly-triage.yml) |
+| [`anomaly-to-issue.yml`](.github/workflows/anomaly-to-issue.yml) | On merge, promotes files under `.anomalies/` into GitHub issues with parsed frontmatter. | [`examples/anomaly-to-issue.yml`](examples/anomaly-to-issue.yml) |
+| [`labeler.yml`](.github/workflows/labeler.yml) | Thin wrapper around `actions/labeler@v5`. | [`examples/labeler.yml`](examples/labeler.yml) |
+| [`stale.yml`](.github/workflows/stale.yml) | Auto-marks and optionally closes stale issues and PRs through `actions/stale@v9`. | [`examples/stale.yml`](examples/stale.yml) |
+| [`lock-threads.yml`](.github/workflows/lock-threads.yml) | Locks closed issues and PRs after a configurable inactivity window through `dessant/lock-threads@v5`. | [`examples/lock-threads.yml`](examples/lock-threads.yml) |
+
+### Provider Self-Tests
+
+| Workflow | Purpose |
+| --- | --- |
+| [`self-test.yml`](.github/workflows/self-test.yml) | Direct repo CI for this provider. Runs `npm test` when scripts or package files change. Consumers should not copy it. |
+| [`self-test-go.yml`](.github/workflows/self-test-go.yml) | Direct repo CI proving the in-PR `go-ci.yml` lane against local Go fixtures. Consumers should not copy it. |
+
+## Recommended Consumer Setup
+
+For new repos, prefer starting from
+[`ArchonVII/repo-template`](https://github.com/ArchonVII/repo-template). For
+existing repos, copy only the caller workflows you need from `examples/`.
+
+Start with the required gate caller:
 
 ```yaml
-# .github/workflows/pr-policy.yml in a consumer repo
-name: PR Policy
+name: Repo Required Gate
+
 on:
   pull_request:
-    types: [opened, edited, reopened, synchronize]
+    branches: [main]
+    types: [opened, edited, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  merge_group:
+
 permissions:
-  pull-requests: read
   contents: read
+  pull-requests: write
+
 jobs:
-  policy:
-    uses: ArchonVII/github-workflows/.github/workflows/pr-policy.yml@v1
-    # Optional: fail agent-managed PRs touching protected paths unless an
-    # independent approval or non-author Release-Admiral marker is present.
-    # Defaults are warning-only per ArchonVII/.github#14.
-    # with:
-    #   enforce-role-separation: true
+  repo-required-gate:
+    uses: ArchonVII/github-workflows/.github/workflows/repo-required-gate.yml@v1
+    with:
+      stack: minimal
 ```
 
-### PR role-separation policy
+Then choose a stack:
 
-`pr-policy.yml` includes the F7 role-separation check from
-[`ArchonVII/.github#14`](https://github.com/ArchonVII/.github/issues/14).
-By default, the workflow emits warnings when PR metadata suggests the same
-account both authored and is preparing to close agent-managed work. This is not
-a universal hard block because the ArchonVII solo-owner workflow permits Joseph
-to be the human merging account for legitimate work.
+- `minimal` for docs, policy, and config repos with no language CI.
+- `node` for Node projects.
+- `python` for Python projects.
+- `go` for Go projects.
+- `polyglot` when one repo contains multiple language surfaces and the gate
+  should route by changed path.
 
-Consumers that want scoped hard enforcement can set:
+After the first PR run, configure branch protection on `main` to require only:
 
-```yaml
-with:
-  enforce-role-separation: true
+```text
+repo-required-gate / decision
 ```
 
-When enabled, agent-managed PRs touching protected paths must have either an
-independent approving review or a PR-body marker such as
-`Release-Admiral: @reviewer-name`, where the marker names a non-author. The
-default protected path set covers `.github/**`, `.githooks/**`, `.agent/**`,
-agent authority docs, package manifests/locks, `src/**`, and `scripts/**`. Use
-`role-protected-paths` to override that list.
+Add specialized callers only when the repo needs them. For example, use
+`doc-orphan-detector.yml` on repos that allow doc-sweep recovery, use
+`auto-merge-dependabot.yml` only where Dependabot auto-merge is acceptable, and
+use standalone `actionlint.yml` when workflow validation should run outside the
+required gate.
 
-The Owner Maintenance Lane is direct-commit-only and intentionally has no PR
-exemption here. Dependabot auto-merge is the explicit exception.
+## PR Contract And Role Separation
 
----
+The canonical PR body scaffold lives at
+[`contracts/pr-template.md`](contracts/pr-template.md). It is intentionally
+invalid until the TODOs are replaced with real summary, verification,
+docs/changelog, and issue-link content.
 
-## Per-repo setup script
+`pr-policy.yml` and `repo-required-gate.yml` both use
+[`scripts/pr-contract.mjs`](scripts/pr-contract.mjs) for the shared PR contract.
+The contract can require:
 
-`scripts/setup-repo.mjs` applies the standard label set and branch protection to a target repo via `gh api`. Idempotent — safe to re-run after adding labels here.
+- `Summary`, `Verification`, `Verification Notes`, `Docs / Changelog`, and
+  `Linked Issue` sections.
+- A `Closes #N`, `Fixes #N`, or `Refs #N` issue link.
+- At least one checked verification item.
+- Non-placeholder verification notes.
+- Branch names matching the configured convention.
+
+Doc-only PRs can skip the strict body ceremony when every changed file matches
+the configured doc-only extensions or prefixes.
+
+Role-separation enforcement is no longer described as a named persona workflow.
+The current model is ordinary review control:
+
+- By default, role-separation findings are warnings.
+- Consumers may set `enforce-role-separation: true` for protected paths.
+- When enforced, protected-path agent PRs need an independent approving review
+  as the documented path. The validator retains legacy body-marker
+  compatibility for older PRs, but new guidance should use reviews instead of
+  named personas.
+- Dependabot auto-merge is the explicit automation exception.
+
+## Required Gate Details
+
+The required gate caller listens for `labeled` and `unlabeled` events only to
+support the `ci:full` escape hatch. The example caller isolates ordinary label
+changes such as `no-changelog` into a `label-skip-*` concurrency group so they
+do not start, cancel, or replace the real required-gate run.
+
+If a consumer overrides `force-full-ci-label`, update both the caller guard and
+the concurrency expression to match the new label.
+
+The gate's internal lane routing is intentionally conservative:
+
+- Docs-only changes avoid unnecessary language CI.
+- Workflow and policy changes run workflow/policy validation.
+- Dependency changes can run dependency review.
+- Stack changes run the relevant language lane.
+- `ci:full` bypasses path routing and runs the full configured surface.
+
+## Repo Setup Script
+
+[`scripts/setup-repo.mjs`](scripts/setup-repo.mjs) applies standard labels and
+branch protection to a target repo through the GitHub CLI.
+
+Preview first:
 
 ```bash
-# Dry-run first to preview changes
 node scripts/setup-repo.mjs ArchonVII/new-thing --dry-run
+```
 
-# Apply for real
-node scripts/setup-repo.mjs ArchonVII/new-thing
+Apply for a solo-owner repo:
 
-# Solo repo (skip the "require 1 approving review" rule)
+```bash
 node scripts/setup-repo.mjs ArchonVII/new-thing --solo
 ```
 
-What the script applies:
+Apply normal branch protection with one required approval:
 
-- **Standard label set** (~30 labels):
-  - Type: `bug`, `enhancement`, `documentation`, `chore`, `refactor`, `tests`, `performance`, `dependencies`, `security`, `breaking`
-  - Severity (for `anomaly-to-issue`): `severity:low|medium|high|critical`
-  - Priority: `priority:p0|p1|p2|p3`
-  - Effort (from the `open` skill): `effort:s|m|l|xl`
-  - Status: `wip`, `blocked`, `stale`, `pinned`, `roadmap`, `needs-triage`
-  - Workflow: `no-changelog`, `anomaly`, `ignore-for-release`, `auto-merge`
-  - PRD: `prd`, `tracer-bullet`
-- **Branch protection** on the default branch: require PR, dismiss stale reviews on push, linear history, no force-push, no deletions, conversations must resolve. `--solo` sets required approvals to 0; default is 1.
+```bash
+node scripts/setup-repo.mjs ArchonVII/new-thing
+```
 
-What the script does NOT do (do these by hand or via PR):
+The script applies the standard type, severity, priority, effort, status,
+workflow, and PRD labels. It also configures default-branch protection:
+pull-request requirement, stale-review dismissal, linear history, no force
+pushes, no deletions, and resolved conversations.
 
-- Write files into the target repo (`CODEOWNERS`, `dependabot.yml`) — the script prints templates instead. The `repo-template` repo has these pre-wired.
-- Add reusable workflow callers — pick those per repo from `examples/` (or use `repo-template`).
-- Configure required status checks — after the first PR run, set repo Settings → Branches to require `repo-required-gate / decision`.
+The script does not write files into the target repo, add caller workflows,
+install dependency config, or select required status checks. Use repo-template
+or copy caller workflows from `examples/`, then configure the branch-protection
+required check after the first workflow run.
 
----
+## Local Development
 
-## Versioning
+Install dependencies:
 
-Tags `v1`, `v2`, ... are the consumer-facing API surface. Breaking changes bump the major. Bug fixes and additive workflows/inputs land on `main` and the major tag is fast-forwarded — consumers pinned to `@v1` get them on the next workflow run.
+```bash
+npm ci
+```
 
-To pin to a specific commit instead of a moving tag, replace `@v1` with the full SHA.
+Run the test suite:
 
----
+```bash
+npm test
+```
 
-## Why three repos
+Validate a PR contract from GitHub:
 
-- **[`ArchonVII/.github`](https://github.com/ArchonVII/.github)** — community health _files_. GitHub picks these up automatically as defaults for every repo without its own copy. No CI, no opt-in.
-- **`ArchonVII/github-workflows`** (this repo) — reusable _workflows_ and a _setup script_. Consumers opt in per repo.
-- **[`ArchonVII/repo-template`](https://github.com/ArchonVII/repo-template)** — _bootstrap template_ for new repos. Marked as a GitHub template repo; clone it via "Use this template" to start with all the callers, a `dependabot.yml`, `CHANGELOG.md`, `AGENTS.md`, etc. already in place.
+```bash
+npm run pr:contract -- --repo ArchonVII/github-workflows --pr 123
+```
 
-The three layers compose: the template gets you wired up on day one, the workflows keep working forever, and the `.github` defaults patch any holes in repos that drift from the template.
+Run agent closeout preflight before promoting a draft PR:
+
+```bash
+npm run agent:close-preflight -- --repo ArchonVII/github-workflows --pr 123
+npm run agent:pr-ready -- --repo ArchonVII/github-workflows --pr 123
+```
+
+Agents should use `agent:pr-ready` instead of calling `gh pr ready` directly.
+The script fetches PR metadata, runs the same PR contract validator used in CI,
+prints exact repair failures, and only then promotes the PR when the contract is
+valid.
+
+## Why This Repo Exists
+
+The ArchonVII automation layer is intentionally split:
+
+- `.github` supplies organization-level community health defaults.
+- `repo-template` gives new repos a full local scaffold.
+- `github-workflows` centralizes reusable workflow logic and setup helpers.
+
+That split keeps workflow behavior versioned and reusable without silently
+mutating every consumer repo. Consumers opt in, pin a major version, and keep
+their repo-local policy and triggers visible in their own `.github/workflows/`
+directory.
