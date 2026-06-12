@@ -13,6 +13,8 @@ role language is retired as operating guidance. Current policy is implemented
 through normal GitHub primitives: issues, branches, worktrees, PR contracts,
 branch protection, CI checks, labels, reviews, and explicit workflow inputs.
 
+Agent and maintainer governance for this repository lives in [`AGENTS.md`](AGENTS.md). Start there before changing workflows, setup scripts, or PR policy helpers; operational changes are logged in [`docs/repo-update-log.md`](docs/repo-update-log.md).
+
 ## Companion Repos
 
 - [`ArchonVII/.github`](https://github.com/ArchonVII/.github) provides
