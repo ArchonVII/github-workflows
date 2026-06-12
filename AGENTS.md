@@ -12,6 +12,7 @@ Cross-tool contract for AI agents (Claude, Codex, Copilot, Gemini, etc.) working
 - `.agent/check-map.yml` — path-to-check expectations
 
 <!-- BEGIN MANAGED AGENT START MAP -->
+
 ## Agent Start Map
 
 Agents should not spend time rediscovering the process files. Start here:
@@ -31,6 +32,7 @@ If these files are missing or unclear, stop searching and run:
 ```text
 node <path-to-archon-setup>/bin/onboard.mjs <repo> --audit
 ```
+
 <!-- END MANAGED AGENT START MAP -->
 
 ## What This Repo Owns

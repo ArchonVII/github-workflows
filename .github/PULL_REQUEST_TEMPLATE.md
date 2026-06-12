@@ -39,7 +39,7 @@ Plan/status artifacts: TODO: closed, narrowed to remaining scoped work, marked d
 
 ## Linked Issue
 
-TODO: Closes #___
+TODO: Closes #\_\_\_
 
 ## Risks
 
