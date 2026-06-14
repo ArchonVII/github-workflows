@@ -523,12 +523,19 @@ jobs:
               core.warning(`pr-template: ${report}`);
             }
 
+  # The validation/language lanes below are intentionally DECOUPLED from
+  # pr-contract: they run on detect classification alone and are never gated on
+  # contract success. A failing PR body must not suppress real CI. Coupling them
+  # caused every lane to skip on a body failure, after which the decision job
+  # reported a misleading "node ci ... required but result was skipped" while no
+  # CI had actually run (ArchonVII/archon#200). The decision job still requires
+  # BOTH the contract and the lanes, so a malformed body still blocks merge —
+  # now with real lane signal instead of a phantom skip.
   workflow-validation:
     name: workflow and hook validation
     needs:
       - detect
-      - pr-contract
-    if: always() && inputs.run-workflow-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-workflow-validation == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
+    if: always() && inputs.run-workflow-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-workflow-validation == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -559,8 +566,7 @@ jobs:
     name: policy validation
     needs:
       - detect
-      - pr-contract
-    if: always() && inputs.run-policy-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-policy-validation == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
+    if: always() && inputs.run-policy-validation && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-policy-validation == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -579,8 +585,7 @@ jobs:
     name: dependency review
     needs:
       - detect
-      - pr-contract
-    if: always() && inputs.run-dependency-review && github.event_name == 'pull_request' && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-dependency-review == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
+    if: always() && inputs.run-dependency-review && github.event_name == 'pull_request' && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-dependency-review == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -598,8 +603,7 @@ jobs:
     name: node ci
     needs:
       - detect
-      - pr-contract
-    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-node-ci == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
+    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-node-ci == 'true'
     uses: ArchonVII/github-workflows/.github/workflows/node-ci.yml@v1
     with:
       node-versions: ${{ inputs.node-versions }}
@@ -615,8 +619,7 @@ jobs:
     name: python ci
     needs:
       - detect
-      - pr-contract
-    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-python-ci == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
+    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-python-ci == 'true'
     uses: ArchonVII/github-workflows/.github/workflows/python-ci.yml@v1
     with:
       python-versions: ${{ inputs.python-versions }}
@@ -632,8 +635,7 @@ jobs:
     name: go ci
     needs:
       - detect
-      - pr-contract
-    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-go-ci == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
+    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-go-ci == 'true'
     uses: ArchonVII/github-workflows/.github/workflows/go-ci.yml@v1
     with:
       go-versions: ${{ inputs.go-versions }}
@@ -651,8 +653,7 @@ jobs:
     name: snapshot validation
     needs:
       - detect
-      - pr-contract
-    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-snapshot-validation == 'true' && (github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success')
+    if: always() && needs.detect.outputs.ok == 'true' && needs.detect.outputs.run-snapshot-validation == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

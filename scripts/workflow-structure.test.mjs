@@ -49,44 +49,42 @@ describe('repo-required-gate workflow node delegation', () => {
     expect(body).not.toContain('cache: "npm"');
   });
 
-  it('gates expensive PR jobs on the cheap PR contract', () => {
+  it('decouples the language and validation lanes from the PR contract', () => {
     const body = readWorkflow('repo-required-gate');
 
+    // A failing PR body must NEVER skip real CI: every lane depends on `detect`
+    // alone and is never gated on contract success. Coupling them skipped all
+    // CI on a body failure and surfaced a misleading "node ci ... skipped" from
+    // the decision job (ArchonVII/archon#200). Contract enforcement lives in
+    // the decision job, asserted in the next test.
     for (const job of [
       'workflow-validation',
       'policy-validation',
       'dependency-review',
       'node-ci',
       'python-ci',
+      'go-ci',
       'snapshot-validation',
     ]) {
       const block = workflowJobBlock(body, job);
 
       expect(block, `${job} job exists`).not.toBe('');
-      expect(block, `${job} waits for pr-contract`).toContain('pr-contract');
-      expect(block, `${job} skips when pull-request contract failed`).toContain(
+      expect(block, `${job} does not wait for pr-contract`).not.toContain('pr-contract');
+      expect(block, `${job} is not gated on contract success`).not.toContain(
         "needs.pr-contract.result == 'success'",
       );
     }
   });
 
-  it('lets explicit pr-contract opt-outs continue to downstream jobs', () => {
+  it('still enforces the PR contract in the decision job after decoupling', () => {
     const body = readWorkflow('repo-required-gate');
+    const decision = workflowJobBlock(body, 'decision');
 
-    for (const job of [
-      'workflow-validation',
-      'policy-validation',
-      'dependency-review',
-      'node-ci',
-      'python-ci',
-      'snapshot-validation',
-    ]) {
-      const block = workflowJobBlock(body, job);
-
-      expect(block, `${job} respects run-pr-contract=false`).toContain(
-        "github.event_name != 'pull_request' || inputs.run-pr-contract == false || needs.pr-contract.result == 'success'",
-      );
-    }
+    // Decoupling the lanes must not drop contract enforcement — the decision
+    // job stays the single aggregator that requires the contract.
+    expect(decision, 'decision waits for pr-contract').toContain('- pr-contract');
+    expect(decision).toContain("CONTRACT_RESULT: ${{ needs.pr-contract.result }}");
+    expect(decision).toContain('require_success "pr contract" "$CONTRACT_RESULT"');
   });
 
   it('honors optional validation inputs in the decision job', () => {
