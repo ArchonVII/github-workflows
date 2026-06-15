@@ -135,6 +135,7 @@ A narrow, named set of agent-local note files may be **added or modified** direc
 
 - `.claude/noticed.md` — per-repo observation log (the `Observations` convention)
 - `.claude/napkin.md` — per-repo curated runbook (the napkin skill, curated each session)
+- `.claude/friction.md` — per-repo structured friction ledger (non-bug workflow hiccups; one table row per event). Log a hiccup, don't fix it mid-task, keep working.
 
 These need no `(owner)` scope — any Conventional Commit subject works (e.g. `chore(noticed): flush observations`), and the issue-ref requirement is waived when every staged path is a ledger. Renames, copies, and deletes of a ledger still require the normal branch/PR lane. The allowlist lives in `.githooks/scripts/owner-maintenance.sh` (`owner_maintenance_is_append_log`); extend it only for a file a documented convention mandates frequent low-ceremony writes to.
 
