@@ -1,0 +1,117 @@
+name: Doc Policy Lint (reusable)
+
+# Warning-only document-policy lint for durable docs. This workflow reports
+# status-header drift, charter budget overages, dangling supersession links,
+# placeholder tokens in active docs, index coherence, and stale active-doc
+# terms near changed current-truth registers.
+#
+# Promotion into `.agent/check-map.yml` docs requirements is intentionally
+# deferred. Findings here are warnings only, following the PR-template
+# drift-guard precedent.
+
+on:
+  workflow_call:
+    inputs:
+      workflow-library-ref:
+        description: |
+          Git ref (tag, branch, or SHA) of ArchonVII/github-workflows used to
+          source scripts/doc-policy-lint.mjs. MUST match the ref the caller
+          pins this reusable workflow to (for example @v1 plus v1 here).
+        type: string
+        default: v1
+      max-warnings:
+        description: "Maximum number of warning annotations to emit before truncating."
+        type: number
+        default: 200
+      readme-max-lines:
+        description: "README.md charter budget."
+        type: number
+        default: 150
+      agents-max-lines:
+        description: "AGENTS.md charter budget."
+        type: number
+        default: 300
+      tool-stub-max-lines:
+        description: "CLAUDE.md/GEMINI.md tool-stub charter budget."
+        type: number
+        default: 25
+      vision-max-lines:
+        description: "VISION.md charter budget."
+        type: number
+        default: 120
+
+jobs:
+  doc-policy-lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out caller repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out github-workflows for doc-policy helper scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ArchonVII/github-workflows
+          ref: ${{ inputs.workflow-library-ref }}
+          path: __github-workflows__
+
+      - name: Collect changed files
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+        run: |
+          set -uo pipefail
+
+          : > .doc-policy-changed-files.txt
+
+          if [ -z "$BASE_SHA" ]; then
+            echo "No base SHA available; stale active-doc term signal will run without PR-change context."
+            exit 0
+          fi
+
+          case "$BASE_SHA" in
+            0000000000000000000000000000000000000000)
+              echo "Base SHA is empty push sentinel; stale active-doc term signal will run without PR-change context."
+              exit 0
+              ;;
+          esac
+
+          if git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            if ! git diff --name-only "$BASE_SHA"...HEAD > .doc-policy-changed-files.txt; then
+              echo "::warning title=Doc policy lint context::Could not diff $BASE_SHA...HEAD; stale active-doc term signal will run without PR-change context."
+              : > .doc-policy-changed-files.txt
+            fi
+          else
+            echo "::warning title=Doc policy lint context::Could not resolve base SHA $BASE_SHA; stale active-doc term signal will run without PR-change context."
+          fi
+
+      - name: Run doc-policy lint
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          echo "Doc policy lint is warning-only; findings never fail this job."
+          node __github-workflows__/scripts/doc-policy-lint.mjs \
+            --repo . \
+            --changed-files .doc-policy-changed-files.txt \
+            --github-annotations \
+            --summary .doc-policy-lint-summary.md \
+            --max-warnings "${{ inputs.max-warnings }}" \
+            --readme-max-lines "${{ inputs.readme-max-lines }}" \
+            --agents-max-lines "${{ inputs.agents-max-lines }}" \
+            --tool-stub-max-lines "${{ inputs.tool-stub-max-lines }}" \
+            --vision-max-lines "${{ inputs.vision-max-lines }}"
+
+          status="$?"
+          if [ "$status" -ne 0 ]; then
+            echo "::warning title=Doc policy lint skipped::doc-policy-lint exited with $status; warning-only workflow will not fail."
+          fi
+
+          if [ -f .doc-policy-lint-summary.md ]; then
+            cat .doc-policy-lint-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          exit 0

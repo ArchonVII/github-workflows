@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-06-15 - Warning-only document policy lint workflow
+
+- **Issue/PR:** #70 / (pending)
+- **Branch:** agent/codex/70-doc-policy-lint
+- **Changed paths:** .github/workflows/doc-policy-lint.yml, examples/doc-policy-lint.yml, scripts/doc-policy-lint.mjs, scripts/doc-policy-lint.test.mjs, scripts/workflow-structure.test.mjs, README.md, .changelog/unreleased/70-doc-policy-lint.md, docs/repo-update-log.md
+- **What changed:** Added a warning-only reusable `doc-policy-lint` workflow and caller example. The helper checks durable docs status headers, OD4 charter budgets, supersession links, active-doc placeholders, index coherence, and stale active-doc terms near changed current-truth registers without failing the job for findings.
+- **Verification:** `npm test` passed 129/129 tests. `C:\Users\josep\go\bin\actionlint.exe .github\workflows\doc-policy-lint.yml examples\doc-policy-lint.yml` exited 0 with no findings.
+- **Propagation:** pending `v1` tag movement after merge; consumer required-check promotion is explicitly deferred.
+
 ## 2026-06-15 - Friction ledger wiring
 
 - **Issue/PR:** #78 / #79

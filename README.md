@@ -50,7 +50,7 @@ full immutability can pin to a commit SHA instead of `@v1`.
 
 ## Workflow Inventory
 
-This repo currently contains 18 reusable `workflow_call` workflows and 2
+This repo currently contains 19 reusable `workflow_call` workflows and 2
 provider self-test workflows.
 
 ### Required Gate And PR Policy
@@ -85,6 +85,7 @@ provider self-test workflows.
 | --- | --- | --- |
 | [`changelog-fragment.yml`](.github/workflows/changelog-fragment.yml) | Requires an added `.changelog/unreleased/*.md` fragment when configured source paths change, with a label-based opt-out. | [`examples/changelog-fragment.yml`](examples/changelog-fragment.yml) |
 | [`doc-orphan-detector.yml`](.github/workflows/doc-orphan-detector.yml) | Scheduled backstop for committed docs stranded on pushed branches with no open PR. Reports path-only tracking issues and never commits or pushes. | [`examples/doc-orphan-detector.yml`](examples/doc-orphan-detector.yml) |
+| [`doc-policy-lint.yml`](.github/workflows/doc-policy-lint.yml) | Warning-only document-policy lint for durable docs: status headers, charter budgets, supersession links, active-doc placeholders, index coherence, and stale active-doc terms. | [`examples/doc-policy-lint.yml`](examples/doc-policy-lint.yml) |
 | [`anomaly-triage.yml`](.github/workflows/anomaly-triage.yml) | Reads a per-PR anomalies file, classifies entries as PR-related or unrelated, posts sticky review comments, and can open downstream issues. | [`examples/anomaly-triage.yml`](examples/anomaly-triage.yml) |
 | [`anomaly-to-issue.yml`](.github/workflows/anomaly-to-issue.yml) | On merge, promotes files under `.anomalies/` into GitHub issues with parsed frontmatter. | [`examples/anomaly-to-issue.yml`](examples/anomaly-to-issue.yml) |
 | [`labeler.yml`](.github/workflows/labeler.yml) | Thin wrapper around `actions/labeler@v5`. | [`examples/labeler.yml`](examples/labeler.yml) |
@@ -143,9 +144,10 @@ repo-required-gate / decision
 
 Add specialized callers only when the repo needs them. For example, use
 `doc-orphan-detector.yml` on repos that allow doc-sweep recovery, use
-`auto-merge-dependabot.yml` only where Dependabot auto-merge is acceptable, and
-use standalone `actionlint.yml` when workflow validation should run outside the
-required gate.
+`doc-policy-lint.yml` when document-policy warnings should be visible without
+blocking merges, use `auto-merge-dependabot.yml` only where Dependabot
+auto-merge is acceptable, and use standalone `actionlint.yml` when workflow
+validation should run outside the required gate.
 
 ## PR Contract And Role Separation
 
