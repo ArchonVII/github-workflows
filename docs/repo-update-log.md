@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-06-15 - Friction ledger wiring
+
+- **Issue/PR:** #78 / #79
+- **Branch:** agent/claude/78-friction-ledger-wiring
+- **Changed paths:** .gitignore, .githooks/scripts/owner-maintenance.sh, .githooks/pre-commit, .githooks/commit-msg, AGENTS.md, .claude/friction.md, docs/repo-update-log.md
+- **What changed:** Wired the friction ledger that previously had only its instruction half-propagated: `.gitignore` exception so `.claude/friction.md` is trackable, the ledger added to the owner-maintenance direct-main allowlist (hook case + pre-commit/commit-msg help text) and the AGENTS.md append-log list, and the ledger seeded with the contract header. Part of the OS Stage 1 friction-telemetry rollout (ArchonVII/archon-setup#238).
+- **Verification:** `bash -n` clean on the three edited hook scripts; `.claude/friction.md` trackable via the new exception; direct-main append verified post-merge under #238.
+- **Propagation:** none (repo-local hook/gitignore wiring; sibling self-apply tracked in ArchonVII/archon-setup#264).
+
 ## 2026-06-11 - Governance baseline onboarding
 
 - **Issue/PR:** #38 / (pending)
