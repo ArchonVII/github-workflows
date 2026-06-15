@@ -1,7 +1,8 @@
 node_modules/
 
 # Agent / local runtime state
-.claude/
+.claude/*
+!.claude/friction.md
 .gemini/
 .codex/
 task_plan.md
