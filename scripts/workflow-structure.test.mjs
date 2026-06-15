@@ -154,3 +154,34 @@ describe('pr-body-autoinject scaffold', () => {
     expect(body).not.toContain('- [x] Automated CI checks green on this PR');
   });
 });
+
+describe('doc-policy-lint workflow contract', () => {
+  it('is warning-only and declares explicit permissions', () => {
+    const body = readWorkflow('doc-policy-lint');
+    const jobBlock = workflowJobBlock(body, 'doc-policy-lint');
+
+    expect(jobBlock).toContain('permissions:');
+    expect(jobBlock).toContain('contents: read');
+    expect(jobBlock).not.toContain('core.setFailed');
+    expect(jobBlock).not.toContain('exit 1');
+    expect(jobBlock).toContain('Doc policy lint is warning-only');
+  });
+
+  it('checks out helper scripts from the caller-aligned workflow-library-ref', () => {
+    const body = readWorkflow('doc-policy-lint');
+
+    expect(body).toContain('workflow-library-ref:');
+    expect(body).toContain('ref: ${{ inputs.workflow-library-ref }}');
+    expect(body).toContain('__github-workflows__');
+    expect(body).toContain('scripts/doc-policy-lint.mjs');
+  });
+
+  it('ships a caller example pinned to the same reusable-workflow and helper refs', () => {
+    const body = readExample('doc-policy-lint');
+
+    expect(body).toContain('uses: ArchonVII/github-workflows/.github/workflows/doc-policy-lint.yml@v1');
+    expect(body).toContain('workflow-library-ref: v1');
+    expect(body).toContain('permissions:');
+    expect(body).toContain('contents: read');
+  });
+});
