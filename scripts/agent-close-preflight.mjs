@@ -10,10 +10,14 @@ function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
     const item = argv[i];
+    if (item === '-h' || item === '--help') {
+      args.help = true;
+      continue;
+    }
     if (!item.startsWith('--')) continue;
 
     const key = item.slice(2);
-    if (key === 'json' || key === 'allow-ready' || key === 'skip-git') {
+    if (key === 'json' || key === 'allow-ready' || key === 'skip-git' || key === 'help') {
       args[key] = true;
       continue;
     }
@@ -21,6 +25,23 @@ function parseArgs(argv) {
     i += 1;
   }
   return args;
+}
+
+function printUsage() {
+  process.stdout.write(`Usage: agent-close-preflight.mjs --repo <owner/name> --pr <n> [options]
+
+Validate an existing draft PR against the contract AND check local git state
+(clean tree, branch matches PR head, branch pushed) before closeout. To validate
+a drafted body BEFORE the PR exists, use \`pr-contract.mjs --body-file -\` instead.
+
+Options:
+  --repo <owner/name>   Target repository (required).
+  --pr <n>              PR number (required).
+  --allow-ready         Do not fail if the PR is already ready for review.
+  --skip-git            Skip the local git-state checks.
+  --json                Emit the full result object as JSON.
+  -h, --help            Show this help.
+`);
 }
 
 function git(args, options = {}) {
@@ -68,6 +89,10 @@ function collectGitFailures({ expectedBranch }) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.help) {
+    printUsage();
+    return;
+  }
   const pr = loadPrFromGh({ repo: args.repo, pr: args.pr });
   const contract = validatePrContract(pr, {
     branchPattern: args['branch-pattern'],

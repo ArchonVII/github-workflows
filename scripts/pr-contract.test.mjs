@@ -1,5 +1,9 @@
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { validatePrContract, validatePrTemplate, formatPrTemplateResult } from './pr-contract.mjs';
+
+const scriptPath = fileURLToPath(new URL('./pr-contract.mjs', import.meta.url));
 
 const validBody = [
   '## Summary',
@@ -197,5 +201,115 @@ describe('validatePrTemplate', () => {
   it('formats a passing result', () => {
     expect(formatPrTemplateResult(validatePrTemplate(canonicalTemplate)))
       .toContain('conforms');
+  });
+});
+
+// Owner acceptance table from the closeout-contract plan (session 019eccc1 F4/F7).
+// The "still fails" cases matter as much as the "now passes" cases: the parser is
+// context-aware, not weaker.
+describe('context-aware parser (acceptance table)', () => {
+  it('passes when the template HTML comment (with the word "placeholder") survives but visible fields are filled', () => {
+    const body = [
+      '<!--',
+      '  Replace every placeholder before marking the PR ready for review.',
+      '-->',
+      '',
+      validBody,
+    ].join('\n');
+    expect(validatePrContract(input({ body })).ok).toBe(true);
+  });
+
+  it('fails when ## Summary still contains a TODO placeholder', () => {
+    const body = validBody.replace(
+      '- Add strict PR contract validation before ready-for-review.',
+      'TODO: Fill in summary.',
+    );
+    const result = validatePrContract(input({ body }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('placeholder_text');
+  });
+
+  it('fails when an evidence-block field value is a placeholder (command: TODO)', () => {
+    const body = validBody.replace('command: npm test', 'command: TODO');
+    const result = validatePrContract(input({ body }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('placeholder_text');
+  });
+
+  it('fails a checked verification claim of "tests passed"', () => {
+    const body = validBody.replace('- [x] npm test', '- [x] tests passed');
+    const result = validatePrContract(input({ body }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('generic_verification');
+  });
+
+  it('passes a note that cites a command in inline code', () => {
+    const body = validBody.replace(
+      'Validated the reusable workflow tests locally with `npm test`; no warnings were emitted.',
+      'Direct `npm test` evidence is recorded in the block above; no warnings were emitted.',
+    );
+    expect(validatePrContract(input({ body })).ok).toBe(true);
+  });
+
+  it('passes a note that quotes a "tests passed" diagnostic inside a fenced block', () => {
+    const body = validBody.replace(
+      'Validated the reusable workflow tests locally with `npm test`; no warnings were emitted.',
+      [
+        'Close-scan hit a Windows buffer limit; the direct run is cited below and GitHub checks succeeded.',
+        '',
+        '```',
+        'npm test -> 129 tests passed, 0 failed',
+        '```',
+      ].join('\n'),
+    );
+    expect(validatePrContract(input({ body })).ok).toBe(true);
+  });
+
+  it('fails a Docs / Changelog section that is only "N/A"', () => {
+    const body = validBody.replace(
+      '- [x] README and reusable workflow examples updated for the new contract.',
+      'N/A',
+    );
+    const result = validatePrContract(input({ body }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('placeholder_text');
+  });
+});
+
+// The keystone: the same validator runs on a drafted body BEFORE a PR exists.
+describe('pr-contract --body-file (pre-publish, no PR)', () => {
+  const runBodyFile = (body, extraArgs = []) => {
+    try {
+      const stdout = execFileSync('node', [scriptPath, '--body-file', '-', '--json', ...extraArgs], {
+        input: body,
+        encoding: 'utf8',
+      });
+      return { code: 0, result: JSON.parse(stdout) };
+    } catch (err) {
+      return { code: err.status ?? 1, result: JSON.parse(err.stdout || '{}') };
+    }
+  };
+
+  it('validates a complete drafted body from stdin and exits 0', () => {
+    const { code, result } = runBodyFile(validBody, [
+      '--title', 'feat(policy): enforce PR contract before ready',
+      '--branch', 'agent/codex/36-pr-contract-gate',
+      '--files-json', JSON.stringify(['scripts/pr-contract.mjs']),
+    ]);
+    expect(code).toBe(0);
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects a drafted body with placeholders and exits 1', () => {
+    const { code, result } = runBodyFile(
+      validBody.replace('- Add strict PR contract validation before ready-for-review.', 'TODO: fill me'),
+      [
+        '--title', 'feat(policy): enforce PR contract before ready',
+        '--branch', 'agent/codex/36-pr-contract-gate',
+        '--files-json', JSON.stringify(['scripts/pr-contract.mjs']),
+      ],
+    );
+    expect(code).toBe(1);
+    expect(result.ok).toBe(false);
   });
 });
