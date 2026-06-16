@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-06-16 - Review of steipete/agent-scripts for integration
+
+- **Issue/PR:** #85 / (pending)
+- **Branch:** agent/copilot/85-agent-scripts-review
+- **Changed paths:** docs/agent-scripts-review.md, docs/repo-update-log.md
+- **What changed:** Added a per-script review of `steipete/agent-scripts` (`committer`, `validate-skills`, `docs-list.ts`, `trash.ts`, `browser-tools.ts`, `nanobanana`, `shazam-song`) mapped to existing ArchonVII OS capabilities and source-of-truth boundaries. Net recommendation: only `committer` is worth a follow-up, owned by `repo-template` and distributed via `archon-setup`; everything else is already covered or out of scope.
+- **Verification:** Docs-only review change; no code, workflow, or policy behavior changed. Each upstream script body was read at pinned ref `6e512e6` before assessment.
+- **Propagation:** none (review/findings doc; any `committer` adoption is tracked as future work against `repo-template`).
+
 ## 2026-06-15 - Warning-only document policy lint workflow
 
 - **Issue/PR:** #70 / (pending)
