@@ -265,6 +265,18 @@ describe('context-aware parser (acceptance table)', () => {
     expect(validatePrContract(input({ body })).ok).toBe(true);
   });
 
+  it('passes a note that quotes a "tests passed" diagnostic on a blockquote line', () => {
+    const body = validBody.replace(
+      'Validated the reusable workflow tests locally with `npm test`; no warnings were emitted.',
+      [
+        'Close-scan hit a Windows buffer limit; the direct run is cited below and GitHub checks succeeded.',
+        '',
+        '> npm test -> 129 tests passed, 0 failed',
+      ].join('\n'),
+    );
+    expect(validatePrContract(input({ body })).ok).toBe(true);
+  });
+
   it('fails a Docs / Changelog section that is only "N/A"', () => {
     const body = validBody.replace(
       '- [x] README and reusable workflow examples updated for the new contract.',
@@ -311,5 +323,6 @@ describe('pr-contract --body-file (pre-publish, no PR)', () => {
     );
     expect(code).toBe(1);
     expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('placeholder_text');
   });
 });
