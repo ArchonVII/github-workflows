@@ -65,4 +65,10 @@ describe('extractLabelInputDefaults', () => {
     ].join('\n');
     expect(extractLabelInputDefaults(yml)).toEqual([]);
   });
+
+  it('intentionally ignores inline (flow-style) label inputs (block-style only)', () => {
+    // Documents the LABEL_INPUT_RE scope: a single-line `key: value` is not scanned.
+    // All live workflow label inputs are block-style; revisit if that ever changes.
+    expect(extractLabelInputDefaults('  force-full-ci-label: ci:full')).toEqual([]);
+  });
 });

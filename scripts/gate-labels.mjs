@@ -12,6 +12,11 @@
 // Inputs whose name ends in -label(s) but whose value is NOT a label name.
 const IGNORE_INPUTS = new Set(['sync-labels']); // labeler on/off toggle, not a label
 
+// Matches BLOCK-style inputs only: the `*-label(s):` key on its own line, with the
+// value on a following `default:` line. Inline/flow-style on one line (e.g.
+// `force-full-ci-label: ci:full`) is intentionally NOT scanned — every live workflow
+// input is block-style (locked by gate-labels.test.mjs). Extend this if a future
+// workflow ever declares a gate label inline, or the audit could miss it.
 const LABEL_INPUT_RE = /^(\s*)([a-z0-9][a-z0-9-]*-labels?):\s*$/i;
 const DEFAULT_RE = /^\s*default:\s*(.+?)\s*$/;
 
