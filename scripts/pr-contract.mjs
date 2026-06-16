@@ -179,7 +179,7 @@ function validateBody(body, rules, errors, warnings) {
     ));
   }
 
-  if (rules.rejectPlaceholders && hasPlaceholder(body)) {
+  if (rules.rejectPlaceholders && hasPlaceholder(stripHtmlComments(body))) {
     errors.push(error(
       'placeholder_text',
       'PR body contains placeholder text such as TODO, TBD, N/A, or an unset issue marker.',
@@ -202,7 +202,7 @@ function validateBody(body, rules, errors, warnings) {
       'body',
     ));
   }
-  if (rules.rejectGenericVerificationNotes && GENERIC_VERIFICATION_RE.test(notes.trim())) {
+  if (rules.rejectGenericVerificationNotes && GENERIC_VERIFICATION_RE.test(maskCodeAndQuotes(notes).trim())) {
     errors.push(error(
       'generic_verification_notes',
       '`### Verification Notes` must not be a generic CI/tests-passed statement.',
@@ -389,7 +389,7 @@ function isDocsOnly(files, rules) {
 }
 
 function hasSubstantiveContent(text) {
-  const cleaned = text
+  const cleaned = stripHtmlComments(text)
     .split(/\r?\n/)
     .map((line) => line.replace(/^[-*]\s+\[[ xX]\]\s+/, '').trim())
     .filter((line) => line && !line.startsWith('<!--') && !line.startsWith('```'))
@@ -400,6 +400,30 @@ function hasSubstantiveContent(text) {
 
 function hasPlaceholder(text) {
   return PLACEHOLDER_RE.test(text || '');
+}
+
+// Remove HTML comments before placeholder scanning so a template's own
+// instructional comment (which legitimately contains words like "placeholder"
+// or "TODO") does not trip the contract. Evidence-block field values are NOT
+// stripped, so `command: TODO` inside a ```evidence block still fails.
+// Source: forensic analysis of session 019eccc1 (F4) + owner refinement 5.
+function stripHtmlComments(text) {
+  return String(text || '').replace(/<!--[\s\S]*?-->/g, ' ');
+}
+
+// Mask fenced code/evidence blocks, inline code spans, and blockquoted lines
+// from FREE PROSE before the generic-verification scan, so an explanatory note
+// may quote a command or diagnostic (e.g. a cited `npm test` line) without being
+// rejected as a generic "tests passed" claim. Checked checkbox claims are scanned
+// raw (not masked), so `- [x] tests passed` still fails.
+// Source: forensic analysis of session 019eccc1 (F7) + owner refinement 5.
+function maskCodeAndQuotes(text) {
+  return String(text || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`\n]*`/g, ' ')
+    .split(/\r?\n/)
+    .map((line) => (/^\s*>/.test(line) ? ' ' : line))
+    .join('\n');
 }
 
 function sameHeading(left, right) {
@@ -418,11 +442,15 @@ function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
     const item = argv[i];
+    if (item === '-h' || item === '--help') {
+      args.help = true;
+      continue;
+    }
     if (!item.startsWith('--')) continue;
 
     const key = item.slice(2);
-    if (key === 'json') {
-      args.json = true;
+    if (key === 'json' || key === 'help') {
+      args[key] = true;
       continue;
     }
     args[key] = argv[i + 1];
@@ -448,11 +476,68 @@ function loadInputFromEvent(eventPath, filesJson) {
   };
 }
 
+// Pre-publish input adapter: validate a locally drafted body with NO remote PR.
+// `--body-file -` reads the body from stdin so the agent never needs a temp file.
+// Pair with --title / --branch / --files-json so the SAME contract that CI runs
+// after creation can be run locally before `gh pr create`.
+// Source: forensic analysis of session 019eccc1 (F2/F3) — the keystone that
+// removes the push -> create -> amend -> re-scan loop.
+function loadInputFromBodyFile(args) {
+  const source = args['body-file'];
+  const body = readFileSync(source === '-' ? 0 : source, 'utf8');
+  const files = args['files-json'] ? JSON.parse(args['files-json']) : [];
+  return {
+    title: args.title || '',
+    body,
+    branch: args.branch || '',
+    files,
+    isDraft: true,
+    number: null,
+    url: null,
+  };
+}
+
+function printUsage() {
+  process.stdout.write(`Usage: pr-contract.mjs <input-mode> [options]
+
+Validate a PR against the ArchonVII ready-for-review contract. The same
+validator runs locally (before a PR exists) and in CI (after) — identical rules.
+
+Input modes (choose one):
+  --body-file <path|->          Validate a locally drafted body. '-' reads stdin.
+                                Pair with --title, --branch, --files-json.
+  --repo <owner/name> --pr <n>  Validate an existing remote PR (via gh pr view).
+  --event-path <path>           Validate a pull_request event payload (CI).
+
+Options:
+  --title <text>                PR title (body-file mode).
+  --branch <name>               Head branch (body-file mode).
+  --files-json <json>           JSON array of changed file paths (docs-only detection).
+  --branch-pattern <regex>      Override the allowed head-branch pattern.
+  --doc-only-extensions <exts>  Override the docs-only file extensions.
+  --doc-only-path-prefixes <p>  Override docs-only path prefixes (newline-separated).
+  --json                        Emit the full result object as JSON.
+  -h, --help                    Show this help.
+
+Exit code: 0 = contract passes, 1 = fails.
+`);
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const input = args['event-path']
-    ? loadInputFromEvent(args['event-path'], args['files-json'] || process.env.PR_CONTRACT_FILES_JSON)
-    : loadPrFromGh({ repo: args.repo, pr: args.pr });
+  if (args.help) {
+    printUsage();
+    return;
+  }
+
+  let input;
+  if (args['body-file']) {
+    input = loadInputFromBodyFile(args);
+  } else if (args['event-path']) {
+    input = loadInputFromEvent(args['event-path'], args['files-json'] || process.env.PR_CONTRACT_FILES_JSON);
+  } else {
+    input = loadPrFromGh({ repo: args.repo, pr: args.pr });
+  }
 
   const result = validatePrContract(input, {
     branchPattern: args['branch-pattern'],
