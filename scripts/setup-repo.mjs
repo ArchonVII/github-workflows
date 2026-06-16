@@ -24,6 +24,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { LABELS } from './labels.mjs';
 
 const exec = promisify(execFile);
 
@@ -51,55 +52,9 @@ const NO_PROTECTION = flag('--no-protection');
 
 // --- Standard label set ----------------------------------------------------
 
-const LABELS = [
-  // Type
-  { name: 'bug', color: 'D93F0B', description: 'Something is broken' },
-  { name: 'enhancement', color: 'A2EEEF', description: 'New feature or capability' },
-  { name: 'documentation', color: '0075CA', description: 'Docs gap, error, or improvement' },
-  { name: 'chore', color: 'CFD3D7', description: 'Tech debt, refactor, cleanup' },
-  { name: 'refactor', color: 'CFD3D7', description: 'Code restructure without behavior change' },
-  { name: 'tests', color: '5319E7', description: 'Test-only changes' },
-  { name: 'performance', color: 'FBCA04', description: 'Performance improvement' },
-  { name: 'dependencies', color: '0366D6', description: 'Dependency bump or change' },
-  { name: 'security', color: 'B60205', description: 'Security-relevant change' },
-  { name: 'breaking', color: 'B60205', description: 'Breaking change (API, schema, behavior)' },
-
-  // Severity (used by anomaly-to-issue workflow)
-  { name: 'severity:low', color: '0E8A16', description: 'Anomaly severity: low' },
-  { name: 'severity:medium', color: 'FBCA04', description: 'Anomaly severity: medium' },
-  { name: 'severity:high', color: 'D93F0B', description: 'Anomaly severity: high' },
-  { name: 'severity:critical', color: 'B60205', description: 'Anomaly severity: critical' },
-
-  // Priority
-  { name: 'priority:p0', color: 'B60205', description: 'Drop everything' },
-  { name: 'priority:p1', color: 'D93F0B', description: 'Do soon' },
-  { name: 'priority:p2', color: 'FBCA04', description: 'Normal' },
-  { name: 'priority:p3', color: 'C5DEF5', description: 'Nice to have' },
-
-  // Effort (from the `open` skill — drives triage and PRD breakdown)
-  { name: 'effort:s', color: 'C2E0C6', description: '< 1 hour' },
-  { name: 'effort:m', color: 'BFE5BF', description: '~ half day' },
-  { name: 'effort:l', color: 'FBCA04', description: '1–2 days' },
-  { name: 'effort:xl', color: 'D93F0B', description: 'Multi-day' },
-
-  // Status
-  { name: 'wip', color: 'FEF2C0', description: 'Work in progress; not ready for review' },
-  { name: 'blocked', color: 'E11D21', description: 'Blocked on external dependency' },
-  { name: 'stale', color: 'CFD3D7', description: 'Auto-applied by stale workflow' },
-  { name: 'pinned', color: '5319E7', description: 'Exempt from stale/lock workflows' },
-  { name: 'roadmap', color: '5319E7', description: 'Long-running roadmap tracking issue' },
-
-  // Workflow / release
-  { name: 'no-changelog', color: 'EDEDED', description: 'Skip the CHANGELOG fragment requirement' },
-  { name: 'anomaly', color: 'B60205', description: 'Auto-promoted from .anomalies/ file on merge' },
-  { name: 'ignore-for-release', color: 'EDEDED', description: 'Exclude from auto-generated release notes' },
-  { name: 'auto-merge', color: '0E8A16', description: 'Eligible for auto-merge once CI is green' },
-
-  // PRD / breakdown (from the `open` skill)
-  { name: 'prd', color: '5319E7', description: 'Parent PRD issue — broken into tracer-bullet sub-issues' },
-  { name: 'tracer-bullet', color: 'BFD4F2', description: 'Thin vertical slice cutting through all layers' },
-  { name: 'needs-triage', color: 'FEF2C0', description: 'Not yet triaged into a bucket' },
-];
+// The canonical label seed set now lives in labels.mjs (imported above) so the
+// gate-label audit (gate-labels.test.mjs) can verify it against the labels that
+// reusable workflows actually apply/gate on, without importing this CLI script.
 
 // --- gh wrapper ------------------------------------------------------------
 
