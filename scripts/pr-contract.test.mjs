@@ -208,6 +208,23 @@ describe('validatePrTemplate', () => {
 // The "still fails" cases matter as much as the "now passes" cases: the parser is
 // context-aware, not weaker.
 describe('context-aware parser (acceptance table)', () => {
+  it('passes when visible completed prose uses the word "placeholder"', () => {
+    const body = validBody
+      .replace(
+        '- Add strict PR contract validation before ready-for-review.',
+        '- Allow completed PR prose to mention placeholder matching without failing the contract.',
+      )
+      .replace(
+        'Validated the reusable workflow tests locally with `npm test`; no warnings were emitted.',
+        'Validated that placeholder wording in visible completed prose is accepted.',
+      );
+    const result = validatePrContract(input({
+      title: 'fix(policy): allow placeholder prose',
+      body,
+    }));
+    expect(result.ok).toBe(true);
+  });
+
   it('passes when the template HTML comment (with the word "placeholder") survives but visible fields are filled', () => {
     const body = [
       '<!--',
@@ -229,8 +246,25 @@ describe('context-aware parser (acceptance table)', () => {
     expect(result.errors.map((e) => e.code)).toContain('placeholder_text');
   });
 
+  it('fails when ## Summary is only literal placeholder filler', () => {
+    const body = validBody.replace(
+      '- Add strict PR contract validation before ready-for-review.',
+      'placeholder placeholder placeholder',
+    );
+    const result = validatePrContract(input({ body }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('placeholder_text');
+  });
+
   it('fails when an evidence-block field value is a placeholder (command: TODO)', () => {
     const body = validBody.replace('command: npm test', 'command: TODO');
+    const result = validatePrContract(input({ body }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('placeholder_text');
+  });
+
+  it('fails when an evidence-block field value is literal placeholder filler', () => {
+    const body = validBody.replace('command: npm test', 'command: placeholder');
     const result = validatePrContract(input({ body }));
     expect(result.ok).toBe(false);
     expect(result.errors.map((e) => e.code)).toContain('placeholder_text');
