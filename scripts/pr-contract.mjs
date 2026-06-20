@@ -15,7 +15,8 @@ const DEFAULT_REQUIRED_HEADINGS = [
 
 const TITLE_RE = /^(feat|fix|refactor|test|docs|style|chore|perf|ci|build|revert)(\([^)]+\))?: .+/;
 const ISSUE_RE = /\b(Closes|Fixes|Refs)\s+#\d+\b/i;
-const PLACEHOLDER_RE = /\b(TODO|TBD|FIXME|FILL ME|FILL IN|REPLACE THIS|PLACEHOLDER|NOT YET|N\/A|NONE YET)\b|#\s*(?:___|<[^>]+>)|<set-before-merge>/i;
+// "placeholder" is valid completed prose; reject explicit unfilled markers.
+const PLACEHOLDER_RE = /\b(TODO|TBD|FIXME|FILL ME|FILL IN|REPLACE THIS|NOT YET|N\/A|NONE YET)\b|#\s*(?:___|<[^>]+>)|<set-before-merge>/i;
 const CHECKED_RE = /^\s*-\s+\[[xX]\]\s+(.+?)\s*$/;
 const UNCHECKED_RE = /^\s*-\s+\[\s\]\s+(.+?)\s*$/;
 const GENERIC_VERIFICATION_RE = /\b(automated ci checks? green|ci[- ]?green|ci checks? pass(?:ed|es)?|checks? green|all checks? pass(?:ed|es)?|tests? pass(?:ed|es)?)\b/i;
@@ -399,7 +400,34 @@ function hasSubstantiveContent(text) {
 }
 
 function hasPlaceholder(text) {
-  return PLACEHOLDER_RE.test(text || '');
+  return PLACEHOLDER_RE.test(text || '') || hasLiteralPlaceholderFiller(text);
+}
+
+function hasLiteralPlaceholderFiller(text) {
+  const raw = stripHtmlComments(text);
+  const candidates = [
+    raw,
+    ...raw.split(/\r?\n/),
+  ];
+  return candidates.some((candidate) => {
+    const cleaned = normalizePlaceholderCandidate(candidate);
+    const words = cleaned.toLowerCase().match(/[a-z]+/g) || [];
+    return words.length > 0
+      && (
+        words.every((word) => word === 'placeholder')
+        || words.join(' ') === 'placeholder text'
+      );
+  });
+}
+
+function normalizePlaceholderCandidate(text) {
+  return String(text || '')
+    .replace(/^[-*]\s+\[[ xX]\]\s+/, '')
+    .replace(/^[-*]\s+/, '')
+    .replace(/^(?:feat|fix|refactor|test|docs|style|chore|perf|ci|build|revert)(?:\([^)]+\))?:\s*/i, '')
+    .replace(/^[A-Za-z][A-Za-z -]{0,40}:\s*/, '')
+    .replace(/[`"'[\]{}()<>]/g, ' ')
+    .trim();
 }
 
 // Remove HTML comments before placeholder scanning so a template's own

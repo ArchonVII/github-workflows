@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-06-20 - PR contract placeholder prose matching
+
+- **Issue/PR:** #90 / #91
+- **Branch:** agent/codex/90-pr-contract-placeholder-matching
+- **Changed paths:** scripts/pr-contract.mjs, scripts/pr-contract.test.mjs, .changelog/unreleased/90-pr-contract-placeholder-matching.md, docs/repo-update-log.md
+- **What changed:** Relaxed the shared PR contract validator so normal completed prose can use the word "placeholder". Explicit unfilled markers such as TODO, TBD, N/A, unset issue links, and `<set-before-merge>` remain rejected.
+- **Verification:** `npx vitest run scripts/pr-contract.test.mjs` passed 23/23 tests. `git diff --check` exited 0 with CRLF warnings. `npm test` on local Windows failed before executing unchanged `scripts/doc-policy-lint.test.mjs` with `SyntaxError: Invalid or unexpected token`; latest upstream `Self-test (scripts)` on `main` passed on GitHub Actions run 27698751593, and this PR should use the PR self-test for full-suite Linux signal.
+- **Propagation:** pending `v1` tag movement after merge.
+
 ## 2026-06-15 - Warning-only document policy lint workflow
 
 - **Issue/PR:** #70 / (pending)
