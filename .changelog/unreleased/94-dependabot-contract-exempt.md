@@ -1,0 +1,3 @@
+### Added
+
+- `repo-required-gate` gained a `pr-contract-exempt-bots` input (default `dependabot[bot]`, exact-match logins) that skips the human-authored PR body/title contract for the listed bot author(s). The dependency-review and language-CI lanes still run and still gate merge via the `decision` job — only the body/title contract is skipped. This lets Dependabot PRs (and `auto-merge-dependabot`) clear the required gate, which their generated bodies otherwise structurally cannot satisfy. Default exempts Dependabot only — not a blanket `[bot]` suffix — so arbitrary GitHub Apps are never auto-exempted.
