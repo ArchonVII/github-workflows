@@ -185,3 +185,23 @@ describe('doc-policy-lint workflow contract', () => {
     expect(body).toContain('contents: read');
   });
 });
+
+describe('repo-update-log-fragment workflow contract', () => {
+  it('checks out the shared validator from the caller-aligned workflow ref', () => {
+    const body = readWorkflow('repo-update-log-fragment');
+
+    expect(body).toContain('workflow-library-ref:');
+    expect(body).toContain('ref: ${{ inputs.workflow-library-ref }}');
+    expect(body).toContain('__github-workflows__');
+    expect(body).toContain('scripts/repo-update-log-fragment.mjs');
+    expect(body).toContain('evaluateRepoUpdateLogFragment');
+  });
+
+  it('ships a caller example pinned to the reusable workflow and helper refs', () => {
+    const body = readExample('repo-update-log-fragment');
+
+    expect(body).toContain('uses: ArchonVII/github-workflows/.github/workflows/repo-update-log-fragment.yml@v1');
+    expect(body).toContain('workflow-library-ref: v1');
+    expect(body).toContain('types: [opened, synchronize, edited, reopened, ready_for_review]');
+  });
+});

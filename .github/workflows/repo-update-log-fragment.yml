@@ -1,0 +1,139 @@
+name: Repo Update Log Fragment (reusable)
+
+# Enforces the ArchonVII repo-update-log fragment convention. Applicable PRs
+# must add one `docs/repo-update-log/*.md` fragment. Ledger-only/backfill PRs
+# pass without requiring a second fragment; unprotected doc-only typo fixes may
+# skip only when the PR body records why the fragment is not required.
+
+on:
+  workflow_call:
+    inputs:
+      fragment-dir:
+        description: "Directory where repo update log fragments live, with trailing slash."
+        type: string
+        default: "docs/repo-update-log/"
+      workflow-library-ref:
+        description: "Git ref of ArchonVII/github-workflows used to source scripts/repo-update-log-fragment.mjs."
+        type: string
+        default: v1
+      doc-only-extensions:
+        description: "Pipe-separated extensions (no dots) considered doc-only."
+        type: string
+        default: "md|txt|png|jpg|jpeg|gif|svg|webp|bmp|ico|avif"
+      doc-only-path-prefixes:
+        description: "Newline-separated path prefixes also treated as doc-only."
+        type: string
+        default: |
+          .changelog/
+      protected-paths:
+        description: "Newline-separated exact paths or prefixes that always require a fragment."
+        type: string
+        default: |
+          .agent/
+          .github/
+          .githooks/
+          AGENTS.md
+          CLAUDE.md
+          GEMINI.md
+          ARCHITECTURE.md
+          CHANGELOG.md
+          DESIGN.md
+          README.md
+          TODO.md
+          VISION.md
+          llms.txt
+          docs/CANON.md
+          docs/INDEX.md
+          docs/LIBRARIAN.md
+          docs/project-status.md
+          docs/repo-update-log/README.md
+          docs/agent-process/
+          docs/decisions/
+      doc-only-skip-pattern:
+        description: "Optional JavaScript regex source used to detect a recorded doc-only skip reason in the PR body."
+        type: string
+        default: ""
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    steps:
+      - name: Check out github-workflows for ledger validator
+        uses: actions/checkout@v4
+        with:
+          repository: ArchonVII/github-workflows
+          ref: ${{ inputs.workflow-library-ref }}
+          path: __github-workflows__
+
+      - name: Enforce repo update log fragment
+        uses: actions/github-script@v7
+        env:
+          FRAGMENT_DIR: ${{ inputs.fragment-dir }}
+          WORKFLOW_LIBRARY_REF: ${{ inputs.workflow-library-ref }}
+          DOC_EXT_LIST: ${{ inputs.doc-only-extensions }}
+          DOC_PREFIXES: ${{ inputs.doc-only-path-prefixes }}
+          PROTECTED_PATHS: ${{ inputs.protected-paths }}
+          DOC_ONLY_SKIP_PATTERN: ${{ inputs.doc-only-skip-pattern }}
+        with:
+          script: |
+            const path = require('path');
+            const url = require('url');
+
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.setFailed('repo-update-log-fragment requires a pull_request event.');
+              return;
+            }
+
+            const validatorPath = path.resolve(
+              process.env.GITHUB_WORKSPACE,
+              '__github-workflows__/scripts/repo-update-log-fragment.mjs',
+            );
+            const ref = process.env.WORKFLOW_LIBRARY_REF || '(unset)';
+
+            let evaluateRepoUpdateLogFragment;
+            let formatRepoUpdateLogFragmentResult;
+            try {
+              ({
+                evaluateRepoUpdateLogFragment,
+                formatRepoUpdateLogFragmentResult,
+              } = await import(url.pathToFileURL(validatorPath).href));
+            } catch (err) {
+              const msg = `Could not load repo-update-log validator at ${validatorPath} (workflow-library-ref=${ref}): ${err && err.message ? err.message : err}.`;
+              core.setFailed(msg);
+              return;
+            }
+
+            const filesPaged = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const result = evaluateRepoUpdateLogFragment({
+              files: filesPaged.map((file) => ({
+                filename: file.filename,
+                status: file.status,
+              })),
+              body: pr.body || '',
+              fragmentDir: process.env.FRAGMENT_DIR,
+              docOnlyExtensions: process.env.DOC_EXT_LIST,
+              docOnlyPathPrefixes: process.env.DOC_PREFIXES,
+              protectedPaths: process.env.PROTECTED_PATHS,
+              docOnlySkipPattern: process.env.DOC_ONLY_SKIP_PATTERN,
+            });
+            const report = formatRepoUpdateLogFragmentResult(result);
+
+            await core.summary
+              .addHeading(result.ok ? 'Repo update log fragment passed' : 'Repo update log fragment failed', 3)
+              .addCodeBlock(report, 'text')
+              .write();
+
+            if (!result.ok) {
+              core.setFailed(report);
+            }
