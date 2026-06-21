@@ -84,6 +84,7 @@ provider self-test workflows.
 | Workflow | Purpose | Caller |
 | --- | --- | --- |
 | [`changelog-fragment.yml`](.github/workflows/changelog-fragment.yml) | Requires an added `.changelog/unreleased/*.md` fragment when configured source paths change, with a label-based opt-out. | [`examples/changelog-fragment.yml`](examples/changelog-fragment.yml) |
+| [`repo-update-log-fragment.yml`](.github/workflows/repo-update-log-fragment.yml) | Requires an added `docs/repo-update-log/*.md` fragment for code/config/behavior/protected-doc/workflow/policy PRs, with a body-recorded skip only for unprotected doc-only fixes. | [`examples/repo-update-log-fragment.yml`](examples/repo-update-log-fragment.yml) |
 | [`doc-orphan-detector.yml`](.github/workflows/doc-orphan-detector.yml) | Scheduled backstop for committed docs stranded on pushed branches with no open PR. Reports path-only tracking issues and never commits or pushes. | [`examples/doc-orphan-detector.yml`](examples/doc-orphan-detector.yml) |
 | [`doc-policy-lint.yml`](.github/workflows/doc-policy-lint.yml) | Warning-only document-policy lint for durable docs: status headers, charter budgets, supersession links, active-doc placeholders, index coherence, and stale active-doc terms. | [`examples/doc-policy-lint.yml`](examples/doc-policy-lint.yml) |
 | [`anomaly-triage.yml`](.github/workflows/anomaly-triage.yml) | Reads a per-PR anomalies file, classifies entries as PR-related or unrelated, posts sticky review comments, and can open downstream issues. | [`examples/anomaly-triage.yml`](examples/anomaly-triage.yml) |

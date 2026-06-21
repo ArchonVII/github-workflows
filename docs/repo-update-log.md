@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-06-20 - Repo update log fragment guard
+
+- **Issue/PR:** #92 / (pending)
+- **Branch:** agent/codex/92-repo-update-log-fragment-guard
+- **Changed paths:** .github/workflows/repo-update-log-fragment.yml, examples/repo-update-log-fragment.yml, scripts/repo-update-log-fragment.mjs, scripts/repo-update-log-fragment.test.mjs, scripts/workflow-structure.test.mjs, README.md, .changelog/unreleased/92-repo-update-log-fragment-guard.md, docs/repo-update-log.md
+- **What changed:** Added a reusable repo-update-log fragment guard so consumers can mechanically require `docs/repo-update-log/*.md` entries for code/config/behavior/protected-doc/workflow/policy PRs. Ledger-only backfills pass without a second fragment, and unprotected doc-only fixes can skip only when the PR body records why.
+- **Verification:** RED: `npx vitest run scripts/repo-update-log-fragment.test.mjs` failed before implementation, then failed 6/7 behavioral assertions against the stub. GREEN: `npx vitest run scripts/repo-update-log-fragment.test.mjs scripts/workflow-structure.test.mjs` passed 22/22; `actionlint .github/workflows/repo-update-log-fragment.yml examples/repo-update-log-fragment.yml` exited 0; `node --check scripts/repo-update-log-fragment.mjs` exited 0; `git diff --check` exited 0 with LF-to-CRLF working-copy warnings only. `npm test` ran 154 passing tests across 8 files, then hit the known local Windows `scripts/doc-policy-lint.test.mjs` parse failure before running that file.
+- **Propagation:** pending `v1` tag movement, repo-template caller/close-scan propagation, archon-setup snapshot refresh, and Hudson Bend consumer wiring.
+
 ## 2026-06-20 - PR contract placeholder prose matching
 
 - **Issue/PR:** #90 / #91
