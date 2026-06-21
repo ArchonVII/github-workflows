@@ -4,3 +4,10 @@
 # CI Linux runners.
 *.sh        text eol=lf
 .githooks/* text eol=lf
+
+# Force LF for ESM modules so shebang-bearing scripts and the esbuild/vitest
+# loader work on Windows checkouts. With core.autocrlf=true the working tree
+# is CRLF, and the loader chokes on "#!/usr/bin/env node\r" (SyntaxError:
+# Invalid or unexpected token) -- green on CI Linux only because the LF blob
+# survives there. See issue #89.
+*.mjs       text eol=lf

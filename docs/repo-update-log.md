@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-06-21 - Force LF for .mjs (Windows shebang loader fix)
+
+- **Issue/PR:** #89 / (pending)
+- **Branch:** agent/claude/89-mjs-eol-lf-gitattributes
+- **Changed paths:** .gitattributes, .changelog/unreleased/89-mjs-eol-lf-gitattributes.md, docs/repo-update-log.md
+- **What changed:** Added a `*.mjs text eol=lf` rule (mirroring the existing `*.sh` rule) so ESM modules check out with LF. With `core.autocrlf=true`, Windows working trees were CRLF, and the shebang line `#!/usr/bin/env node` carried a trailing carriage return that broke the vitest/esbuild loader (`SyntaxError: Invalid or unexpected token`) on four shebang-bearing scripts; CI Linux stayed green only because the LF blob survives there. Ran `git add --renormalize .`; index blobs were already LF, so the committed code diff is just `.gitattributes`.
+- **Verification:** `npx vitest run scripts/doc-policy-lint.test.mjs` now passes (4/4) where it previously threw a SyntaxError loading the suite (0 tests). Full `npm test` (vitest 4.1.7) passed 158/158 across 9 files.
+- **Propagation:** none (repo-local checkout normalization).
+
 ## 2026-06-20 - Dependabot PR-contract exemption
 
 - **Issue/PR:** #94 / (pending)
