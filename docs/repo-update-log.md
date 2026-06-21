@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-06-20 - Dependabot PR-contract exemption
+
+- **Issue/PR:** #94 / (pending)
+- **Branch:** agent/claude/94-dependabot-contract-exempt
+- **Changed paths:** .github/workflows/repo-required-gate.yml, .changelog/unreleased/94-dependabot-contract-exempt.md, docs/repo-update-log.md
+- **What changed:** Added a `pr-contract-exempt-bots` input (default `dependabot[bot]`, exact-match) to the reusable `repo-required-gate`. After the existing draft skip, the `pr contract` job early-returns success when the PR author is an exempt bot, so Dependabot PRs (whose generated bodies cannot satisfy the strict contract) stop blocking the required `decision` job. Dependency-review and language-CI lanes still run and still gate merge; human PRs are unaffected.
+- **Verification:** `actionlint .github/workflows/repo-required-gate.yml` exited 0. `npx vitest run` passed 154/154 across 8 files (workflow-structure included); the pre-existing local-only `scripts/doc-policy-lint.test.mjs` Windows parse failure is unrelated (documented in #93). End-to-end: re-running ArchonVII/hudson-bend#236 after the `v1` move confirms `pr contract` skips and `decision` goes green.
+- **Propagation:** pending `v1` tag movement after merge; consumers on `@v1` pick it up automatically on their next gate run.
+
 ## 2026-06-20 - Repo update log fragment guard
 
 - **Issue/PR:** #92 / (pending)

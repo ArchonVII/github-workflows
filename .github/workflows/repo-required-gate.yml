@@ -66,6 +66,19 @@ on:
       run-pr-contract:
         type: boolean
         default: true
+      pr-contract-exempt-bots:
+        description: |
+          Comma-separated GitHub login(s) whose PRs skip the body/title
+          contract. The dependency/language CI, actionlint, and dependency
+          review lanes still run and still gate merge via the decision job —
+          only the human-authored body/title contract is skipped. Intended for
+          dependabot, whose generated PR bodies structurally cannot satisfy the
+          strict contract (no Summary/Verification/Closes-#N). Exact match on
+          pr.user.login; default is dependabot only (NOT a blanket "[bot]"
+          suffix) so arbitrary GitHub Apps are never auto-exempted. Empty
+          string disables the exemption.
+        type: string
+        default: "dependabot[bot]"
       run-dependency-review:
         type: boolean
         default: true
@@ -373,6 +386,7 @@ jobs:
           DOC_EXT_LIST: ${{ inputs.doc-only-extensions }}
           DOC_PREFIXES: ${{ inputs.doc-only-path-prefixes }}
           WORKFLOW_LIBRARY_REF: ${{ inputs.workflow-library-ref }}
+          PR_CONTRACT_EXEMPT_BOTS: ${{ inputs.pr-contract-exempt-bots }}
         with:
           script: |
             const path = require('path');
@@ -381,6 +395,24 @@ jobs:
             const pr = context.payload.pull_request;
             if (pr.draft) {
               core.info('Draft PR; pr contract is advisory until ready_for_review.');
+              return;
+            }
+
+            // Exempt configured bot authors (default: dependabot) from the
+            // human-authored body/title contract. Their generated PR bodies
+            // can't satisfy it, but the dependency/CI lanes still run and the
+            // decision job still gates merge. Exact login match only.
+            const exemptBots = (process.env.PR_CONTRACT_EXEMPT_BOTS || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const author = (pr.user && pr.user.login) || '';
+            if (exemptBots.includes(author)) {
+              core.info(`PR author ${author} is contract-exempt (pr-contract-exempt-bots); body/title contract skipped. Dependency/CI lanes still gate merge.`);
+              await core.summary
+                .addHeading('PR contract skipped (exempt bot author)', 3)
+                .addCodeBlock(`Author ${author} is in pr-contract-exempt-bots; the human-authored body/title contract is skipped. The dependency review / language CI lanes still run and still gate merge via the decision job.`, 'text')
+                .write();
               return;
             }
 
