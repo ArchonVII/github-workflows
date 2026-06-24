@@ -134,6 +134,25 @@ describe('repo-required-gate caller example', () => {
     expect(concurrencyBlock).toContain('cancel-in-progress: >-');
     expect(concurrencyBlock).toContain("github.event.label.name == 'ci:full'");
   });
+
+  it('defaults to a green-by-default Node gate with dependency review opt-in', () => {
+    const body = readExample('repo-required-gate');
+    const jobBlock = workflowJobBlock(body, 'repo-required-gate');
+
+    // The ArchonVII baseline always ships package.json + scripts/**, so a fresh
+    // onboarded repo's first PR fails the gate when the scaffold defaults to
+    // stack: minimal (the classifier rejects minimal once code/package files are
+    // touched) — default to node instead (archon-setup#280). node-ci runs
+    // scripts via `npm run --if-present`, so a repo without lint/test scripts is
+    // still green.
+    expect(jobBlock).toContain('stack: node');
+    expect(jobBlock).not.toContain('\n      stack: minimal');
+
+    // Dependency review requires GitHub Dependency Graph / Advanced Security,
+    // which a freshly created repo does not have enabled — onboarding assumes
+    // nothing GitHub-side, so the lane is off by default (archon-setup#281).
+    expect(jobBlock).toContain('run-dependency-review: false');
+  });
 });
 
 describe('pr-policy workflow contract source', () => {
