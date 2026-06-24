@@ -89,9 +89,9 @@ jobs:
         os: ${{ fromJSON(inputs.os-matrix) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
           cache: ${{ inputs.cache }}
