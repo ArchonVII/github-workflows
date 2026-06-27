@@ -147,14 +147,14 @@ jobs:
       # (2026-05-20), finding M1.
       - name: Check out github-workflows for policy helper scripts
         if: github.event.pull_request.draft == false
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ArchonVII/github-workflows
           ref: ${{ inputs.workflow-library-ref }}
           path: __github-workflows__
 
       - name: Enforce ready-for-review PR policy
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           REQUIRE_LINKED_ISSUE: ${{ inputs.require-linked-issue }}
           REQUIRE_VERIFICATION_SECTION: ${{ inputs.require-verification-section }}
@@ -246,7 +246,7 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Role separation check
         if: inputs.role-separation-warnings || inputs.enforce-role-separation
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           ENFORCE_ROLE_SEPARATION: ${{ inputs.enforce-role-separation }}
           ROLE_PROTECTED_PATHS: ${{ inputs.role-protected-paths }}
@@ -360,7 +360,7 @@ jobs:
       # update. The exemption lives upstream in the commit path.
       # ----------------------------------------------------------------------
       - name: Evidence check (warning-only by default)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           DOC_EXT_LIST: ${{ inputs.doc-only-extensions }}
           DOC_PREFIXES: ${{ inputs.doc-only-path-prefixes }}
@@ -494,7 +494,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Run actionlint
         uses: raven-actions/actionlint@v2
         with:

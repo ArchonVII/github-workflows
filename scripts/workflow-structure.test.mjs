@@ -24,7 +24,7 @@ describe('node-ci workflow package-manager setup', () => {
 
     const detectIndex = body.indexOf('- name: Detect package manager');
     const setupPnpmIndex = body.indexOf('- name: Set up pnpm');
-    const setupNodeIndex = body.indexOf('- uses: actions/setup-node@v4');
+    const setupNodeIndex = body.search(/- uses: actions\/setup-node@v\d+/);
 
     expect(detectIndex).toBeGreaterThan(-1);
     expect(setupPnpmIndex).toBeGreaterThan(detectIndex);
@@ -34,7 +34,7 @@ describe('node-ci workflow package-manager setup', () => {
   it('installs pnpm before setup-node enables pnpm caching', () => {
     const body = readWorkflow('node-ci');
 
-    expect(body).toContain('uses: pnpm/action-setup@v4');
+    expect(body).toMatch(/uses: pnpm\/action-setup@v\d+/);
     expect(body).toContain("if: steps.pm.outputs.manager == 'pnpm'");
     expect(body).toContain('version: ${{ inputs.pnpm-version }}');
     expect(body).toContain('run_install: false');
