@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { validatePrContract, validatePrTemplate, formatPrTemplateResult } from './pr-contract.mjs';
+import { validatePrContract, validatePrTemplate, formatPrContractResult, formatPrTemplateResult } from './pr-contract.mjs';
 
 const scriptPath = fileURLToPath(new URL('./pr-contract.mjs', import.meta.url));
 
@@ -58,7 +58,7 @@ describe('validatePrContract', () => {
     );
   });
 
-  it('requires exact heading order for non-doc PRs', () => {
+  it('still fails a renamed section heading — via the substance check, with a heading advisory (#99)', () => {
     const body = validBody.replace(
       '### Verification Notes',
       '### Notes From Verification',
@@ -68,6 +68,45 @@ describe('validatePrContract', () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors).toContainEqual(
+      expect.objectContaining({ code: 'empty_verification_notes', path: 'body' }),
+    );
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ code: 'missing_heading', path: 'body' }),
+    );
+  });
+
+  it('passes out-of-order sections with a heading advisory when all substance is present (#99)', () => {
+    const body = [
+      '## Verification',
+      '',
+      '- [x] npm test',
+      '',
+      '```evidence',
+      'command: npm test',
+      'location: local',
+      'result: passed',
+      'timestamp: 2026-05-31T20:00:00Z',
+      '```',
+      '',
+      '### Verification Notes',
+      '',
+      'Validated the reusable workflow tests locally with `npm test`; no warnings were emitted.',
+      '',
+      '## Summary',
+      '',
+      '- Add strict PR contract validation before ready-for-review.',
+      '',
+      '## Docs / Changelog',
+      '',
+      '- README and reusable workflow examples updated for the new contract.',
+      '',
+      'Closes #36',
+    ].join('\n');
+
+    const result = validatePrContract(input({ body }));
+
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toContainEqual(
       expect.objectContaining({ code: 'missing_heading', path: 'body' }),
     );
   });
@@ -101,9 +140,12 @@ describe('validatePrContract', () => {
       expect.arrayContaining([
         'placeholder_text',
         'generic_verification',
-        'unchecked_required_box',
         'missing_issue_link',
       ]),
+    );
+    // Unchecked boxes are advisory since #99 — they count as items but warn.
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ code: 'unchecked_verification_item' }),
     );
   });
 
@@ -319,6 +361,106 @@ describe('context-aware parser (acceptance table)', () => {
     const result = validatePrContract(input({ body }));
     expect(result.ok).toBe(false);
     expect(result.errors.map((e) => e.code)).toContain('placeholder_text');
+  });
+});
+
+// Substance-only contract (owner decision 2026-07-01, #99): require that a
+// verification item exists and is substantive; stop failing on exact format.
+describe('substance-only verification items (#99)', () => {
+  const bodyWithVerification = (verificationLines) => [
+    '## Summary',
+    '',
+    '- Substance-only verification contract test case.',
+    '',
+    '## Verification',
+    '',
+    ...verificationLines,
+    '',
+    '### Verification Notes',
+    '',
+    'Ran the listed commands in the lane worktree; output recorded above.',
+    '',
+    '## Docs / Changelog',
+    '',
+    '- README updated alongside this change.',
+    '',
+    'Closes #99',
+  ].join('\n');
+
+  it('accepts a plain-bullet verification item with no checkbox and no evidence block', () => {
+    const result = validatePrContract(input({
+      body: bodyWithVerification(['- Ran `npm test` in the worktree: 159/159 green.']),
+    }));
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.facts.verificationItemCount).toBe(1);
+  });
+
+  it('accepts `*` bullets as verification items', () => {
+    const result = validatePrContract(input({
+      body: bodyWithVerification(['* Ran `npm test` in the worktree: 159/159 green.']),
+    }));
+    expect(result.ok).toBe(true);
+  });
+
+  it('warns (not fails) on a checked item without an evidence block', () => {
+    const result = validatePrContract(input({
+      body: bodyWithVerification(['- [x] Ran `npm test` in the worktree: 159/159 green.']),
+    }));
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ code: 'missing_evidence_block' }),
+    );
+  });
+
+  it('warns (not fails) on a substantive unchecked item, which still counts', () => {
+    const result = validatePrContract(input({
+      body: bodyWithVerification(['- [ ] Re-ran the flaky suite twice; both runs green.']),
+    }));
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ code: 'unchecked_verification_item' }),
+    );
+    expect(result.facts.verificationItemCount).toBe(1);
+  });
+
+  it('fails when the Verification section has no items at all', () => {
+    const result = validatePrContract(input({
+      body: bodyWithVerification(['Nothing was run.']),
+    }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('missing_verification_item');
+  });
+
+  it('fails a generic plain bullet ("tests pass") just like a generic checked claim', () => {
+    const result = validatePrContract(input({
+      body: bodyWithVerification(['- tests pass']),
+    }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('generic_verification');
+  });
+
+  it('does not count bullet-like lines inside fenced blocks as items', () => {
+    const result = validatePrContract(input({
+      body: bodyWithVerification([
+        '```',
+        '- [x] this is quoted output, not a claim',
+        '- neither is this',
+        '```',
+      ]),
+    }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('missing_verification_item');
+  });
+
+  it('reports advisories in the formatted result on success', () => {
+    const result = validatePrContract(input({
+      body: bodyWithVerification(['- [x] Ran `npm test` in the worktree: 159/159 green.']),
+    }));
+    const report = formatPrContractResult(result);
+    expect(result.ok).toBe(true);
+    expect(report).toContain('Advisories (non-blocking):');
+    expect(report).toContain('missing_evidence_block');
   });
 });
 

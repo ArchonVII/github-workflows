@@ -17,8 +17,14 @@ const TITLE_RE = /^(feat|fix|refactor|test|docs|style|chore|perf|ci|build|revert
 const ISSUE_RE = /\b(Closes|Fixes|Refs)\s+#\d+\b/i;
 // "placeholder" is valid completed prose; reject explicit unfilled markers.
 const PLACEHOLDER_RE = /\b(TODO|TBD|FIXME|FILL ME|FILL IN|REPLACE THIS|NOT YET|N\/A|NONE YET)\b|#\s*(?:___|<[^>]+>)|<set-before-merge>/i;
-const CHECKED_RE = /^\s*-\s+\[[xX]\]\s+(.+?)\s*$/;
-const UNCHECKED_RE = /^\s*-\s+\[\s\]\s+(.+?)\s*$/;
+const CHECKED_RE = /^\s*[-*]\s+\[[xX]\]\s+(.+?)\s*$/;
+const UNCHECKED_RE = /^\s*[-*]\s+\[\s\]\s+(.+?)\s*$/;
+// Substance-only contract (owner decision 2026-07-01, #99): any non-empty
+// bullet in `## Verification` counts as a verification item — the contract
+// requires that something substantive is recorded, not a specific checkbox
+// format. The negative lookahead keeps checkbox lines out of the plain-item
+// match so each line is classified exactly once.
+const ITEM_RE = /^\s*[-*]\s+(?!\[[ xX]\]\s)(.+?)\s*$/;
 const GENERIC_VERIFICATION_RE = /\b(automated ci checks? green|ci[- ]?green|ci checks? pass(?:ed|es)?|checks? green|all checks? pass(?:ed|es)?|tests? pass(?:ed|es)?)\b/i;
 
 /**
@@ -69,13 +75,16 @@ export function validatePrContract(input, options = {}) {
     validateBody(data.body, rules, errors, warnings);
   }
 
+  const items = collectVerificationItems(data.body);
   return {
     ok: errors.length === 0,
     errors,
     warnings,
     facts: {
       docsOnly,
-      checkedVerificationCount: countCheckedVerificationItems(data.body),
+      checkedVerificationCount: items.checked.length,
+      verificationItemCount: [...items.checked, ...items.unchecked, ...items.plain]
+        .filter((item) => item.claim.length > 0).length,
     },
   };
 }
@@ -83,7 +92,14 @@ export function validatePrContract(input, options = {}) {
 export function formatPrContractResult(result) {
   if (result.ok) {
     const suffix = result.facts.docsOnly ? ' (docs-only body ceremony skipped)' : '';
-    return `PR contract passed${suffix}.`;
+    const lines = [`PR contract passed${suffix}.`];
+    if (result.warnings.length > 0) {
+      lines.push('', 'Advisories (non-blocking):');
+      for (const item of result.warnings) {
+        lines.push(`- [${item.code}] ${item.message}`);
+      }
+    }
+    return lines.join('\n');
   }
 
   const lines = ['PR contract failed.', '', 'Required fixes:'];
@@ -91,7 +107,7 @@ export function formatPrContractResult(result) {
     lines.push(`- [${item.code}] ${item.message}`);
   }
   if (result.warnings.length > 0) {
-    lines.push('', 'Warnings:');
+    lines.push('', 'Advisories (non-blocking):');
     for (const item of result.warnings) {
       lines.push(`- [${item.code}] ${item.message}`);
     }
@@ -188,7 +204,10 @@ function validateBody(body, rules, errors, warnings) {
     ));
   }
 
-  validateHeadingOrder(headings, rules.requiredHeadings, errors);
+  // Heading presence/order is advisory since #99: sections are located by
+  // name, so the substance checks below still hard-fail when a section's
+  // content is genuinely missing — only the exact structure is soft.
+  validateHeadingOrder(headings, rules.requiredHeadings, warnings);
 
   const summary = sectionContent(body, headings, 'Summary');
   if (rules.requireSummary && !hasSubstantiveContent(summary)) {
@@ -216,44 +235,41 @@ function validateBody(body, rules, errors, warnings) {
     errors.push(error('empty_docs_changelog', '`## Docs / Changelog` must describe docs or changelog handling.', 'body'));
   }
 
-  const verification = sectionContent(body, headings, 'Verification', { stopBefore: 'Verification Notes' });
-  const checkedItems = verification.split(/\r?\n/).map((line, index) => {
-    const match = line.match(CHECKED_RE);
-    return match ? { claim: match[1].trim(), index } : null;
-  }).filter(Boolean);
-  const uncheckedItems = verification.split(/\r?\n/).map((line) => {
-    const match = line.match(UNCHECKED_RE);
-    return match ? match[1].trim() : null;
-  }).filter(Boolean);
+  const { verification, checked, unchecked, plain } = collectVerificationItems(body);
+  const allItems = [...checked, ...unchecked, ...plain];
+  const substantiveItems = allItems.filter((item) => item.claim.length > 0);
 
-  if (rules.requireCheckedVerification && checkedItems.length === 0) {
+  if (rules.requireCheckedVerification && substantiveItems.length === 0) {
     errors.push(error(
-      'missing_checked_verification',
-      '`## Verification` must include at least one checked verification item.',
+      'missing_verification_item',
+      '`## Verification` must include at least one verification item — a bullet or checkbox recording what was actually run or checked.',
       'body',
     ));
   }
 
-  for (const claim of uncheckedItems) {
-    errors.push(error(
-      'unchecked_required_box',
-      `Unchecked verification item must be completed or removed before ready-for-review: "${claim}".`,
+  for (const item of unchecked) {
+    warnings.push(error(
+      'unchecked_verification_item',
+      `Verification item is unchecked; it still counts as an item, but reads as not-done: "${item.claim}".`,
       'body',
     ));
   }
 
-  for (const item of checkedItems) {
+  for (const item of allItems) {
     if (GENERIC_VERIFICATION_RE.test(item.claim)) {
       errors.push(error(
         'generic_verification',
-        `Checked verification item is too generic: "${item.claim}". Record the actual command, check, or manual action.`,
+        `Verification item is too generic: "${item.claim}". Record the actual command, check, or manual action.`,
         'body',
       ));
     }
+  }
+
+  for (const item of checked) {
     if (rules.requireEvidenceBlocks && !hasEvidenceBlockAfter(verification, item.index)) {
-      errors.push(error(
+      warnings.push(error(
         'missing_evidence_block',
-        `Checked verification item "${item.claim}" must be followed by a fenced \`\`\`evidence block.`,
+        `Checked verification item "${item.claim}" is not followed by a fenced \`\`\`evidence block (recommended shape; advisory since #99).`,
         'body',
       ));
     }
@@ -375,10 +391,44 @@ function hasEvidenceBlockAfter(section, checkedLineIndex) {
   return false;
 }
 
-function countCheckedVerificationItems(body) {
+// Classify every line of the `## Verification` section (fenced blocks masked
+// so evidence field values are never misread as items) into checked boxes,
+// unchecked boxes, and plain bullets. Line indexes are preserved through the
+// masking so evidence-adjacency checks still run against the raw section.
+function collectVerificationItems(body) {
   const headings = parseHeadings(body || '');
   const verification = sectionContent(body || '', headings, 'Verification', { stopBefore: 'Verification Notes' });
-  return verification.split(/\r?\n/).filter((line) => CHECKED_RE.test(line)).length;
+  const checked = [];
+  const unchecked = [];
+  const plain = [];
+  maskFencedLines(verification).forEach((line, index) => {
+    let match = line.match(CHECKED_RE);
+    if (match) {
+      checked.push({ claim: match[1].trim(), index });
+      return;
+    }
+    match = line.match(UNCHECKED_RE);
+    if (match) {
+      unchecked.push({ claim: match[1].trim(), index });
+      return;
+    }
+    match = line.match(ITEM_RE);
+    if (match) plain.push({ claim: match[1].trim(), index });
+  });
+  return { verification, checked, unchecked, plain };
+}
+
+// Blank out fence delimiters and fenced content while preserving line count,
+// so indexes into the raw section stay valid.
+function maskFencedLines(text) {
+  let inFence = false;
+  return String(text || '').split(/\r?\n/).map((line) => {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      return '';
+    }
+    return inFence ? '' : line;
+  });
 }
 
 function isDocsOnly(files, rules) {

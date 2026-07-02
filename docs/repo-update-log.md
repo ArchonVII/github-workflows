@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-07-01 - Substance-only PR verification contract
+
+- **Issue/PR:** #99 / (pending)
+- **Branch:** agent/claude/99-substance-only-contract
+- **Changed paths:** scripts/pr-contract.mjs, scripts/pr-contract.test.mjs, .github/workflows/pr-policy.yml (comments/description only), .github/PULL_REQUEST_TEMPLATE.md, contracts/pr-template.md, README.md, AGENTS.md, .changelog/unreleased/99-substance-only-contract.md
+- **What changed:** Verification items are substance-only — any non-empty bullet or checkbox counts (`missing_verification_item` replaces `missing_checked_verification`); unchecked boxes, missing evidence blocks, and heading order demote to advisories; placeholder + generic-claim rejection and section-substance checks stay hard; fenced content masked from item collection; advisories print on success. Templates, README contract description, and pr-policy header reconciled; mislabeled github-workflows PR template fixed (claimed to be repo-template's, denied this repo's CI surface); retired persona language removed from AGENTS.md; workflow inventory count corrected 19→20.
+- **Verification:** `npm test` — vitest 9 files / 168 tests / 168 pass on the lane worktree (baseline before change: 159; net +9 covering bullets-count, unchecked-warns, evidence-warns, order-advisory, fence-masking, generic-bullet-fails, advisories-on-success).
+- **Propagation:** pending — `@v1` retag (owner-gated) reaches all consumers' CI; repo-template re-vendor of `scripts/pr-contract.mjs` + parity test is the next friction-arc lane; archon-setup snapshot refresh follows.
+
 ## 2026-06-21 - Force LF for .mjs (Windows shebang loader fix)
 
 - **Issue/PR:** #89 / (pending)
