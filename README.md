@@ -50,7 +50,7 @@ full immutability can pin to a commit SHA instead of `@v1`.
 
 ## Workflow Inventory
 
-This repo currently contains 19 reusable `workflow_call` workflows and 2
+This repo currently contains 20 reusable `workflow_call` workflows and 2
 provider self-test workflows.
 
 ### Required Gate And PR Policy
@@ -161,12 +161,20 @@ docs/changelog, and issue-link content.
 [`scripts/pr-contract.mjs`](scripts/pr-contract.mjs) for the shared PR contract.
 The contract can require:
 
-- `Summary`, `Verification`, `Verification Notes`, `Docs / Changelog`, and
-  `Linked Issue` sections.
-- A `Closes #N`, `Fixes #N`, or `Refs #N` issue link.
-- At least one checked verification item.
-- Non-placeholder verification notes.
+- Substantive `Summary`, `Verification`, `Verification Notes`, and
+  `Docs / Changelog` content (headings are located by name; presence/order of
+  the exact heading structure is advisory since #99).
+- A `Closes #N`, `Fixes #N`, or `Refs #N` issue link anywhere in the body.
+- At least one substantive verification item — a plain bullet or a checkbox
+  recording what was actually run or checked (substance-only since #99;
+  the exact `- [x]` format is no longer required).
+- Non-placeholder, non-generic verification content ("tests pass" /
+  "CI green" claims still hard-fail).
 - Branch names matching the configured convention.
+
+Evidence blocks remain the recommended verification shape: they are validated
+when present, and a checked item without one now draws an advisory warning
+instead of a failure.
 
 Doc-only PRs can skip the strict body ceremony when every changed file matches
 the configured doc-only extensions or prefixes.

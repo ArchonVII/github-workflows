@@ -119,7 +119,7 @@ Optional capabilities (claims #14, close-scan #28) are reported as "not installe
 
 ## Owner Maintenance Lane
 
-When the working tree contains only add-only safe maintenance files, agents must not invoke Issue-Admiral, Project-Captain, Project-Lieutenant, Release-Admiral, claim records, handoff blocks, or full CI. Either report `owner maintenance present, no action required` or, if explicitly asked to commit, commit directly on `main` with `docs(owner): ...` or `chore(owner): ...`.
+When the working tree contains only add-only safe maintenance files, agents must not start a delivery lane (issue/branch/PR), write claim records or handoff blocks, or trigger full CI. Either report `owner maintenance present, no action required` or, if explicitly asked to commit, commit directly on `main` with `docs(owner): ...` or `chore(owner): ...`. (Persona-role language — Issue-Admiral / Project-Captain / Project-Lieutenant / Release-Admiral — is retired; see README "role separation".)
 
 Safe owner-maintenance paths are:
 
