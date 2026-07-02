@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-07-01 - Example-caller concurrency + anomaly path filter
+
+- **Issue/PR:** #101 / (pending)
+- **Branch:** agent/claude/101-examples-concurrency
+- **Changed paths:** examples/{anomaly-triage,changelog-fragment,repo-update-log-fragment,pr-policy,branch-naming,semantic-pr-title,auto-merge-dependabot,dependency-review,doc-policy-lint}.yml, .changelog/unreleased/101-examples-concurrency.md
+- **What changed:** Added concurrency-cancel blocks to the nine per-PR example caller stubs and a paths filter on the anomaly-triage stub (the reusable is an idempotent no-op when .archon/anomalies-thispr.md is absent). Schedule/dispatch and single-event stubs deliberately untouched. Mirrors repo-template#140.
+- **Verification:** vitest 9 files / 159 tests / 159 pass on the lane worktree (branch predates #99's merge, hence the 159 baseline); actionlint validates the touched examples in CI.
+- **Propagation:** pending — archon-setup snapshots examples/ as caller stubs for onboarding; consumers with hand-copied stubs get it via the Phase F backfill sweep.
+
 ## 2026-06-21 - Force LF for .mjs (Windows shebang loader fix)
 
 - **Issue/PR:** #89 / (pending)
