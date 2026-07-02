@@ -2,9 +2,11 @@ name: PR Policy (reusable)
 
 # Reusable workflow that enforces a minimum PR body contract:
 #   1. PR body links an issue (Closes / Fixes / Refs #N)
-#   2. PR body contains a Verification heading
-#   3. PR body contains a Verification Notes heading
-#   4. At least one verification checkbox is checked (`- [x]`)
+#   2. PR body contains substantive Verification content
+#   3. PR body contains substantive Verification Notes content
+#   4. At least one substantive verification item — a plain bullet or a
+#      checkbox recording what was actually run (substance-only since #99;
+#      the exact `- [x]` format is no longer required)
 #
 # Doc-only PRs (every changed file matches the doc filter) skip the ceremony.
 # Draft PRs are advisory only.
@@ -21,7 +23,7 @@ on:
         type: boolean
         default: true
       require-checked-box:
-        description: "Require at least one `- [x]` checked box in the body."
+        description: "Require at least one substantive verification item (bullet or checkbox) in the body. Name kept for caller compatibility; substance-only since #99."
         type: boolean
         default: true
       strict-body-contract:
