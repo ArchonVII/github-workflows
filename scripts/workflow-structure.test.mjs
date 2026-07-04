@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const readWorkflow = (name) => readFileSync(`.github/workflows/${name}.yml`, 'utf8');
@@ -65,6 +65,7 @@ describe('repo-required-gate workflow node delegation', () => {
       'python-ci',
       'go-ci',
       'snapshot-validation',
+      'docs-gate',
     ]) {
       const block = workflowJobBlock(body, job);
 
@@ -109,6 +110,79 @@ describe('repo-required-gate workflow node delegation', () => {
     expect(body).toContain('doc-only-path-prefixes:');
     expect(body).toContain('DOC_EXT_LIST: ${{ inputs.doc-only-extensions }}');
     expect(body).toContain('DOC_PREFIXES: ${{ inputs.doc-only-path-prefixes }}');
+  });
+});
+
+describe('repo-required-gate docs-gate lane (#104)', () => {
+  it('declares the opt-in docs-system input defaulting to false', () => {
+    const body = readWorkflow('repo-required-gate');
+
+    const start = body.indexOf('      docs-system:');
+    const end = body.indexOf('      workflow-library-ref:');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+
+    const inputBlock = body.slice(start, end);
+    expect(inputBlock).toContain('type: boolean');
+    expect(inputBlock).toContain('default: false');
+  });
+
+  it('runs the docs gate only for opted-in consumers on pull_request events', () => {
+    const body = readWorkflow('repo-required-gate');
+    const block = workflowJobBlock(body, 'docs-gate');
+
+    expect(block, 'docs-gate job exists').not.toBe('');
+    // Conditioned on the INPUT directly (not a detect output) so a caller
+    // whose workflow-library-ref lags this workflow body can never silently
+    // no-op the gate via a missing classifier output.
+    expect(block).toContain(
+      "if: always() && inputs.docs-system && github.event_name == 'pull_request' && needs.detect.outputs.ok == 'true'",
+    );
+    // health.mjs --changed-from needs the merge base with the PR base branch;
+    // the default depth-1 checkout cannot reach it.
+    expect(block).toContain('fetch-depth: 0');
+    expect(block).toContain('npm run docs:render -- --check');
+    expect(block).toContain(
+      'node scripts/doc-health/health.mjs --repo . --changed-from',
+    );
+  });
+
+  it('emits the run-docs-gate detect output from the classifier', () => {
+    const body = readWorkflow('repo-required-gate');
+
+    expect(body).toContain('run-docs-gate: ${{ steps.detect.outputs.run-docs-gate }}');
+    expect(body).toContain('DOCS_SYSTEM: ${{ inputs.docs-system }}');
+    // The env -> classifyPR hand-off is the one wire the env/output assertions
+    // above cannot see: without it, classifyPR gets docsSystem=undefined and
+    // run-docs-gate is silently 'false', so the lane summary reports docs-gate
+    // as skipped while decision (which reads inputs.docs-system directly)
+    // still requires it.
+    expect(body).toContain("docsSystem: process.env.DOCS_SYSTEM === 'true',");
+    expect(body).toContain(
+      "core.setOutput('run-docs-gate', String(result.outputs.runDocsGate));",
+    );
+  });
+
+  it('aggregates the docs gate in decision with skipped != failed for non-opted consumers', () => {
+    const body = readWorkflow('repo-required-gate');
+    const decision = workflowJobBlock(body, 'decision');
+
+    expect(decision, 'decision waits for docs-gate').toContain('- docs-gate');
+    expect(decision).toContain('DOCS_GATE_RESULT: ${{ needs.docs-gate.result }}');
+    expect(decision).toContain('RUN_DOCS_GATE: ${{ inputs.docs-system }}');
+    expect(decision).toContain('require_success "docs gate" "$DOCS_GATE_RESULT"');
+    // PR-only guard mirrors pr-contract: the docs-gate job itself skips on
+    // push/merge_group even for opted-in consumers, so requiring it without
+    // the event guard would fail every non-PR run of an opted-in consumer.
+    expect(decision).toContain(
+      'if [ "$RUN_DOCS_GATE" = "true" ] && [ "$EVENT_NAME" = "pull_request" ]; then',
+    );
+  });
+
+  it('documents the docs-system opt-in in the example caller', () => {
+    const body = readExample('repo-required-gate');
+
+    expect(body).toContain('# docs-system: true');
   });
 });
 
@@ -216,11 +290,13 @@ describe('repo-update-log-fragment workflow contract', () => {
     expect(body).toContain('evaluateRepoUpdateLogFragment');
   });
 
-  it('ships a caller example pinned to the reusable workflow and helper refs', () => {
-    const body = readExample('repo-update-log-fragment');
-
-    expect(body).toContain('uses: ArchonVII/github-workflows/.github/workflows/repo-update-log-fragment.yml@v1');
-    expect(body).toContain('workflow-library-ref: v1');
-    expect(body).toContain('types: [opened, synchronize, edited, reopened, ready_for_review]');
+  it('no longer ships the retired fragment caller example stubs (#104)', () => {
+    // Guidance cleanup only: the reusable workflow BODIES stay (existing
+    // consumers still call them); only the examples/ stubs are retired so
+    // new-workflow guidance stops pointing agents at fragment callers.
+    expect(existsSync('examples/changelog-fragment.yml')).toBe(false);
+    expect(existsSync('examples/repo-update-log-fragment.yml')).toBe(false);
+    expect(existsSync('.github/workflows/changelog-fragment.yml')).toBe(true);
+    expect(existsSync('.github/workflows/repo-update-log-fragment.yml')).toBe(true);
   });
 });
