@@ -202,6 +202,20 @@ on:
         description: "Fail if go-generate-command leaves a dirty tree (stale committed generated code)."
         type: boolean
         default: false
+      # ---- Docs-system gate (#104) -----------------------------------------
+      docs-system:
+        description: |
+          Opt-in docs gate for repo-template docs-system consumers (same
+          opt-in pattern as `stack`). When true, a docs-gate job runs on
+          pull_request events after detect, in the consumer checkout:
+          `npm run docs:render -- --check` (fails on stale committed rendered
+          blocks) and `node scripts/doc-health/health.mjs --repo .
+          --changed-from origin/<base> --json` (fails on blocking findings).
+          Requires the repo-template docs-system scripts. Consumers that
+          leave this false are unaffected: the job is skipped and the
+          decision job does not require it (skipped != failed).
+        type: boolean
+        default: false
       workflow-library-ref:
         description: |
           Git ref (tag, branch, or SHA) of ArchonVII/github-workflows used
@@ -230,6 +244,7 @@ jobs:
       run-policy-validation: ${{ steps.detect.outputs.run-policy-validation }}
       snapshot-only: ${{ steps.detect.outputs.snapshot-only }}
       run-snapshot-validation: ${{ steps.detect.outputs.run-snapshot-validation }}
+      run-docs-gate: ${{ steps.detect.outputs.run-docs-gate }}
       forced-full: ${{ steps.detect.outputs.forced-full }}
       files-summary: ${{ steps.detect.outputs.files-summary }}
     steps:
@@ -256,6 +271,7 @@ jobs:
           SNAPSHOT_PATHS: ${{ inputs.snapshot-paths }}
           SNAPSHOT_TEST_COMMAND: ${{ inputs.snapshot-test-command }}
           FORCE_FULL_CI_LABEL: ${{ inputs.force-full-ci-label }}
+          DOCS_SYSTEM: ${{ inputs.docs-system }}
           WORKFLOW_LIBRARY_REF: ${{ inputs.workflow-library-ref }}
         with:
           script: |
@@ -303,6 +319,7 @@ jobs:
               snapshotPaths: process.env.SNAPSHOT_PATHS,
               snapshotTestCommand: process.env.SNAPSHOT_TEST_COMMAND,
               forceFullCiLabel: process.env.FORCE_FULL_CI_LABEL,
+              docsSystem: process.env.DOCS_SYSTEM === 'true',
               isPullRequest,
             });
 
@@ -319,6 +336,7 @@ jobs:
             core.setOutput('run-policy-validation', String(result.outputs.runPolicyValidation));
             core.setOutput('snapshot-only', String(result.outputs.snapshotOnly));
             core.setOutput('run-snapshot-validation', String(result.outputs.runSnapshotValidation));
+            core.setOutput('run-docs-gate', String(result.outputs.runDocsGate));
             core.setOutput('forced-full', String(result.outputs.forcedFull));
             core.setOutput('files-summary', result.filesSummary);
 
@@ -717,6 +735,61 @@ jobs:
         shell: bash
         run: ${{ inputs.snapshot-test-command }}
 
+  # Docs-system gate (#104): opt-in via the docs-system input, PR events only.
+  # Runs in the CONSUMER checkout on every lane — doc drift is precisely a
+  # docs-only concern, so the job is deliberately NOT path-routed. Conditioned
+  # on the input directly rather than on `needs.detect.outputs.run-docs-gate`:
+  # a caller whose workflow-library-ref lags this workflow body would import a
+  # classifier without that output, and an empty-string comparison would
+  # silently no-op the gate for an opted-in consumer. The detect output still
+  # exists so the lane summary reports docs-gate as required/skipped honestly.
+  docs-gate:
+    name: docs gate
+    needs:
+      - detect
+    if: always() && inputs.docs-system && github.event_name == 'pull_request' && needs.detect.outputs.ok == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # health.mjs --changed-from resolves the merge base with the PR base
+      # branch; the default depth-1 checkout cannot reach it, so fetch full
+      # history (also brings in origin/<base>).
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ fromJSON(inputs.node-versions)[0] }}
+
+      - name: Detect package manager
+        id: pm
+        shell: bash
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            npm install -g pnpm
+            echo "install=pnpm install --frozen-lockfile" >> "$GITHUB_OUTPUT"
+          elif [ -f yarn.lock ]; then
+            echo "install=yarn install --frozen-lockfile" >> "$GITHUB_OUTPUT"
+          else
+            echo "install=npm ci" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install
+        shell: bash
+        run: ${{ steps.pm.outputs.install }}
+
+      - name: Rendered docs drift check
+        shell: bash
+        run: npm run docs:render -- --check
+
+      - name: Doc health blocking findings
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/doc-health/health.mjs --repo . --changed-from "origin/${BASE_REF}" --json
+
   decision:
     name: decision
     needs:
@@ -729,6 +802,7 @@ jobs:
       - python-ci
       - go-ci
       - snapshot-validation
+      - docs-gate
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -744,6 +818,7 @@ jobs:
           RUN_WORKFLOW_VALIDATION: ${{ inputs.run-workflow-validation && needs.detect.outputs.run-workflow-validation == 'true' }}
           RUN_POLICY_VALIDATION: ${{ inputs.run-policy-validation && needs.detect.outputs.run-policy-validation == 'true' }}
           RUN_SNAPSHOT_VALIDATION: ${{ needs.detect.outputs.run-snapshot-validation }}
+          RUN_DOCS_GATE: ${{ inputs.docs-system }}
           DETECT_RESULT: ${{ needs.detect.result }}
           CONTRACT_RESULT: ${{ needs.pr-contract.result }}
           WORKFLOW_RESULT: ${{ needs.workflow-validation.result }}
@@ -753,6 +828,7 @@ jobs:
           PYTHON_RESULT: ${{ needs.python-ci.result }}
           GO_RESULT: ${{ needs.go-ci.result }}
           SNAPSHOT_RESULT: ${{ needs.snapshot-validation.result }}
+          DOCS_GATE_RESULT: ${{ needs.docs-gate.result }}
           EVENT_NAME: ${{ github.event_name }}
           RUN_PR_CONTRACT: ${{ inputs.run-pr-contract }}
         run: |
@@ -805,6 +881,14 @@ jobs:
 
           if [ "$RUN_SNAPSHOT_VALIDATION" = "true" ]; then
             require_success "snapshot validation" "$SNAPSHOT_RESULT"
+          fi
+
+          # Docs gate is PR-only (mirrors pr-contract): the job itself skips
+          # on push/merge_group even for opted-in consumers, so the event
+          # guard here is load-bearing — without it every non-PR run of an
+          # opted-in consumer would fail on a skipped-but-required job.
+          if [ "$RUN_DOCS_GATE" = "true" ] && [ "$EVENT_NAME" = "pull_request" ]; then
+            require_success "docs gate" "$DOCS_GATE_RESULT"
           fi
 
           if [ "$failed" -ne 0 ]; then

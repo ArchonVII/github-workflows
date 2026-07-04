@@ -498,6 +498,61 @@ describe('classifyPR — stack=go (first-class Go lane, #51)', () => {
   });
 });
 
+describe('classifyPR — docs-system gate (#104)', () => {
+  it('50. default (docsSystem unset) → runDocsGate false, docs-gate skipped', () => {
+    const r = classifyPR(input({ files: ['src/foo.ts'] }));
+    expect(r.outputs.runDocsGate).toBe(false);
+    expect(r.jobsRequired).not.toContain('docs-gate');
+    expect(r.jobsSkipped).toContain('docs-gate');
+  });
+
+  it('51. docsSystem=true on a code PR → docs-gate required', () => {
+    const r = classifyPR(input({ files: ['src/foo.ts'], docsSystem: true }));
+    expect(r.outputs.runDocsGate).toBe(true);
+    expect(r.jobsRequired).toContain('docs-gate');
+    expect(r.jobsSkipped).not.toContain('docs-gate');
+  });
+
+  it('52. docsSystem=true on a docs-only PR → docs-gate still required (drift IS a docs concern)', () => {
+    const r = classifyPR(input({ files: ['README.md'], docsSystem: true }));
+    expect(r.lane).toBe('docs-only');
+    expect(r.outputs.runDocsGate).toBe(true);
+    expect(r.jobsRequired).toContain('docs-gate');
+  });
+
+  it('53. docsSystem=true on push events → runDocsGate false (the job is PR-only)', () => {
+    const r = classifyPR(input({ isPullRequest: false, docsSystem: true }));
+    expect(r.outputs.runDocsGate).toBe(false);
+    expect(r.jobsRequired).not.toContain('docs-gate');
+  });
+
+  it('54. docsSystem=true rides along forced-full and snapshot-refresh lanes', () => {
+    const forced = classifyPR(
+      input({ files: ['README.md'], labels: ['ci:full'], docsSystem: true }),
+    );
+    expect(forced.outputs.runDocsGate).toBe(true);
+    expect(forced.jobsRequired).toContain('docs-gate');
+
+    const snap = classifyPR(
+      input({
+        files: ['src/snapshots/foo.yml'],
+        snapshotPaths: 'src/snapshots/**',
+        snapshotTestCommand: 'npm test',
+        docsSystem: true,
+      }),
+    );
+    expect(snap.lane).toBe('snapshot-refresh');
+    expect(snap.outputs.runDocsGate).toBe(true);
+    expect(snap.jobsRequired).toContain('docs-gate');
+  });
+
+  it('55. config-error result keeps runDocsGate false', () => {
+    const r = classifyPR(input({ stack: 'kotlin', docsSystem: true }));
+    expect(r.ok).toBe(false);
+    expect(r.outputs.runDocsGate).toBe(false);
+  });
+});
+
 describe('classifyPR — polyglot with Go (node+go, #51)', () => {
   // archon's real shape: Electron/React frontend + Go backend.
   const NODE = 'frontend/**\nemain/**\npackage.json\npackage-lock.json';

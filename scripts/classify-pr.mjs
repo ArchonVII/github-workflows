@@ -56,6 +56,7 @@ const VALID_STACKS = new Set(['node', 'python', 'go', 'minimal', 'polyglot']);
  * @property {string}   [snapshotPaths]     Newline-separated patterns. Empty disables the snapshot-refresh lane.
  * @property {string}   [snapshotTestCommand] Non-empty when consumer wants the snapshot-validation job to actually run a test.
  * @property {string}   [forceFullCiLabel]  Label that forces full CI (default 'ci:full').
+ * @property {boolean}  [docsSystem]        True when the caller opted into the docs-gate lane (#104). PR events only; not path-routed.
  * @property {string}   [docExtensions]     Pipe-separated extensions (no dots).
  * @property {string}   [docPrefixes]       Newline-separated prefixes (e.g. 'docs/', '.changelog/').
  * @property {boolean}  [isPullRequest]     False for push events; classifier widens routing accordingly.
@@ -77,6 +78,7 @@ const VALID_STACKS = new Set(['node', 'python', 'go', 'minimal', 'polyglot']);
  * @property {boolean}        outputs.runPolicyValidation
  * @property {boolean}        outputs.snapshotOnly
  * @property {boolean}        outputs.runSnapshotValidation
+ * @property {boolean}        outputs.runDocsGate         True on every PR lane when docsSystem is set (doc drift is a docs concern, so docs-only PRs run it too); always false on non-PR events.
  * @property {boolean}        outputs.forcedFull
  * @property {string[]}       jobsRequired             Job ids required for this lane.
  * @property {string[]}       jobsSkipped              Job ids deliberately skipped.
@@ -98,6 +100,7 @@ export function classifyPR(input) {
     snapshotPaths = '',
     snapshotTestCommand = '',
     forceFullCiLabel = 'ci:full',
+    docsSystem = false,
     docExtensions = DEFAULT_DOC_EXTENSIONS,
     docPrefixes = DEFAULT_DOC_PREFIXES.join('\n'),
     isPullRequest = true,
@@ -155,6 +158,7 @@ export function classifyPR(input) {
       runPolicyValidation: true,
       snapshotOnly: false,
       runSnapshotValidation: false,
+      runDocsGate: false, // docs-gate job is PR-only; the decision job guards on the event too
       forcedFull: false,
     };
     return {
@@ -274,6 +278,7 @@ export function classifyPR(input) {
       runPolicyValidation: true,
       snapshotOnly: false,
       runSnapshotValidation: false,
+      runDocsGate: docsSystem,
       forcedFull: true,
     };
     return {
@@ -300,6 +305,7 @@ export function classifyPR(input) {
       runPolicyValidation: false,
       snapshotOnly: true,
       runSnapshotValidation: snapshotTestCommand.trim().length > 0,
+      runDocsGate: docsSystem,
       forcedFull: false,
     };
     return {
@@ -326,6 +332,9 @@ export function classifyPR(input) {
       runPolicyValidation: false,
       snapshotOnly: false,
       runSnapshotValidation: false,
+      // Doc drift is precisely a docs-only concern — the gate rides along
+      // even on the smallest lane when the consumer opted in.
+      runDocsGate: docsSystem,
       forcedFull: false,
     };
     return {
@@ -352,6 +361,7 @@ export function classifyPR(input) {
       runPolicyValidation: false,
       snapshotOnly: false,
       runSnapshotValidation: false,
+      runDocsGate: docsSystem,
       forcedFull: false,
     };
     return {
@@ -378,6 +388,7 @@ export function classifyPR(input) {
       runPolicyValidation: true,
       snapshotOnly: false,
       runSnapshotValidation: false,
+      runDocsGate: docsSystem,
       forcedFull: false,
     };
     return {
@@ -442,6 +453,7 @@ export function classifyPR(input) {
     runPolicyValidation: policy,
     snapshotOnly: false,
     runSnapshotValidation: false,
+    runDocsGate: docsSystem,
     forcedFull: false,
   };
 
@@ -481,6 +493,7 @@ function requiredJobs(outputs, runPrContract) {
   if (outputs.runPythonCi) jobs.push('python-ci');
   if (outputs.runGoCi) jobs.push('go-ci');
   if (outputs.runSnapshotValidation) jobs.push('snapshot-validation');
+  if (outputs.runDocsGate) jobs.push('docs-gate');
   jobs.push('decision');
   return jobs;
 }
@@ -494,6 +507,7 @@ function skippedJobs(outputs, isPullRequest) {
     'python-ci',
     'go-ci',
     'snapshot-validation',
+    'docs-gate',
   ];
   const required = new Set(requiredJobs(outputs, isPullRequest));
   return all.filter((j) => !required.has(j));
@@ -519,6 +533,7 @@ function failedResult(errors) {
       runPolicyValidation: false,
       snapshotOnly: false,
       runSnapshotValidation: false,
+      runDocsGate: false,
       forcedFull: false,
     },
     jobsRequired: ['detect'],
