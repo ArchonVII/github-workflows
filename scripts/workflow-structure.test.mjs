@@ -152,6 +152,12 @@ describe('repo-required-gate docs-gate lane (#104)', () => {
 
     expect(body).toContain('run-docs-gate: ${{ steps.detect.outputs.run-docs-gate }}');
     expect(body).toContain('DOCS_SYSTEM: ${{ inputs.docs-system }}');
+    // The env -> classifyPR hand-off is the one wire the env/output assertions
+    // above cannot see: without it, classifyPR gets docsSystem=undefined and
+    // run-docs-gate is silently 'false', so the lane summary reports docs-gate
+    // as skipped while decision (which reads inputs.docs-system directly)
+    // still requires it.
+    expect(body).toContain("docsSystem: process.env.DOCS_SYSTEM === 'true',");
     expect(body).toContain(
       "core.setOutput('run-docs-gate', String(result.outputs.runDocsGate));",
     );
