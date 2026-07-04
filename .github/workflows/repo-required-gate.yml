@@ -772,8 +772,16 @@ jobs:
             echo "install=pnpm install --frozen-lockfile" >> "$GITHUB_OUTPUT"
           elif [ -f yarn.lock ]; then
             echo "install=yarn install --frozen-lockfile" >> "$GITHUB_OUTPUT"
-          else
+          elif [ -f package-lock.json ]; then
             echo "install=npm ci" >> "$GITHUB_OUTPUT"
+          else
+            # No committed lockfile: a docs-system consumer may ship
+            # package.json + docs scripts without one. `npm ci` REQUIRES a
+            # lockfile and would fail the docs gate before either check runs,
+            # so fall back to a non-lockfile install — mirrors node-ci.yml's
+            # "Detect package manager" step (node-ci.yml, no-lockfile branch).
+            # --no-package-lock keeps CI from fabricating a stray lockfile.
+            echo "install=npm install --no-package-lock" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install
