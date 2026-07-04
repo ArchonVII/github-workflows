@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const readWorkflow = (name) => readFileSync(`.github/workflows/${name}.yml`, 'utf8');
@@ -284,11 +284,13 @@ describe('repo-update-log-fragment workflow contract', () => {
     expect(body).toContain('evaluateRepoUpdateLogFragment');
   });
 
-  it('ships a caller example pinned to the reusable workflow and helper refs', () => {
-    const body = readExample('repo-update-log-fragment');
-
-    expect(body).toContain('uses: ArchonVII/github-workflows/.github/workflows/repo-update-log-fragment.yml@v1');
-    expect(body).toContain('workflow-library-ref: v1');
-    expect(body).toContain('types: [opened, synchronize, edited, reopened, ready_for_review]');
+  it('no longer ships the retired fragment caller example stubs (#104)', () => {
+    // Guidance cleanup only: the reusable workflow BODIES stay (existing
+    // consumers still call them); only the examples/ stubs are retired so
+    // new-workflow guidance stops pointing agents at fragment callers.
+    expect(existsSync('examples/changelog-fragment.yml')).toBe(false);
+    expect(existsSync('examples/repo-update-log-fragment.yml')).toBe(false);
+    expect(existsSync('.github/workflows/changelog-fragment.yml')).toBe(true);
+    expect(existsSync('.github/workflows/repo-update-log-fragment.yml')).toBe(true);
   });
 });
