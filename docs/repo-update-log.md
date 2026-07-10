@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-07-09 - Anomaly-triage caller write permissions
+
+- **Issue/PR:** #106 / #107
+- **Branch:** agent/codex/106-anomaly-triage-write-permissions
+- **Changed paths:** examples/anomaly-triage.yml, scripts/workflow-structure.test.mjs, .changelog/unreleased/106-anomaly-triage-write-permissions.md, docs/repo-update-log.md
+- **What changed:** The managed anomaly-triage caller now grants `contents: read`, `pull-requests: write`, and `issues: write`, which are the exact scopes its reusable workflow needs. Added a structural regression test because read-default consumers previously failed during reusable-workflow expansion before GitHub created any jobs.
+- **Verification:** TDD RED: `npm test -- scripts/workflow-structure.test.mjs` → 1 failed / 21 passed on the missing caller permission block. GREEN: the same command → 22 passed / 0 failed after adding the three scopes. `actionlint examples/anomaly-triage.yml` exited 0. Full `npm test` → 9 files / 180 tests / 180 passed. `git diff --check` exited 0 with working-tree LF-to-CRLF warnings only. Live consumer proof remains part of propagation.
+- **Propagation:** pending — refresh the `archon-setup` snapshot from the delivered provider source, update every opted-in ArchonVII consumer through normal updater lanes, and prove routing/idempotency in a read-default consumer PR.
+
 ## 2026-07-04 - Docs-gate lane (docs-system input) + fragment example cleanup
 
 - **Issue/PR:** #104 / (pending)
