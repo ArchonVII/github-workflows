@@ -229,6 +229,22 @@ describe('repo-required-gate caller example', () => {
   });
 });
 
+describe('anomaly-triage caller permission contract', () => {
+  it('grants the reusable workflow the least write permissions it requires', () => {
+    const body = readExample('anomaly-triage');
+
+    // Reusable workflows cannot elevate the caller token. Without this block,
+    // read-default consumers fail at workflow startup before jobs exist (#106).
+    const permissionsStart = body.indexOf('permissions:');
+    const jobsStart = body.indexOf('jobs:');
+    expect(permissionsStart).toBeGreaterThan(-1);
+    expect(permissionsStart).toBeLessThan(jobsStart);
+    expect(body.slice(permissionsStart, jobsStart).replaceAll('\r\n', '\n').trim()).toBe(
+      ['permissions:', '  contents: read', '  pull-requests: write', '  issues: write'].join('\n'),
+    );
+  });
+});
+
 describe('pr-policy workflow contract source', () => {
   it('uses the shared PR contract validator instead of inline body regexes', () => {
     const body = readWorkflow('pr-policy');
