@@ -1,0 +1,1 @@
+Fixed: `python-ci.yml` install step was a bash parse error (`syntax error near unexpected token 'elif'`) whenever `install-command` was empty — the default, and the only shape `repo-required-gate.yml` produces — failing every consumer's `repo-required-gate / python ci` before installing anything (#108).

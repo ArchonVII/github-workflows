@@ -82,6 +82,11 @@ jobs:
         shell: bash
         run: |
           if [ -n "${{ inputs.install-command }}" ]; then
+            # The ':' no-op keeps this branch a valid bash body even when the
+            # interpolated command is empty — an empty install-command otherwise
+            # renders `then` + blank line + `elif`, a parse error that failed the
+            # step (and every consumer's python lane) before running anything (#108).
+            :
             ${{ inputs.install-command }}
           elif [ "${{ inputs.use-uv }}" = "true" ] && [ -f pyproject.toml ]; then
             uv sync --all-extras --dev
