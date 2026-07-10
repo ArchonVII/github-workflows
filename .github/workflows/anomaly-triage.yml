@@ -113,7 +113,7 @@ jobs:
               const fields = {};
               const bodyLines = [];
               for (const line of rest.split('\n')) {
-                const m = /^-\s+\*\*([^*]+)\*\*:\s*(.+)$/.exec(line);
+                const m = /^-\s+\*\*([^*:]+?)(?::\*\*|\*\*:)\s*(.+)$/.exec(line);
                 if (m) {
                   fields[m[1].trim().toLowerCase()] = m[2].trim();
                 } else {

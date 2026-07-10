@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-07-09 - Anomaly-triage documented metadata parsing
+
+- **Issue/PR:** #110 / (pending)
+- **Branch:** agent/codex/110-parse-anomaly-metadata
+- **Changed paths:** .github/workflows/anomaly-triage.yml, scripts/workflow-structure.test.mjs, .changelog/unreleased/110-parse-anomaly-metadata.md, docs/repo-update-log.md
+- **What changed:** The anomaly parser now accepts both the documented `**Field:** value` metadata form and the legacy `**Field**: value` form. The former previously lost severity, file, explicit relatedness, and downstream-repo fields, which a live #106 proof exposed when `Related to PR: yes` was routed as an unrelated issue.
+- **Verification:** TDD RED: `npx vitest run scripts/workflow-structure.test.mjs` reported 1 failed / 22 passed for the documented colon placement. GREEN: the same command reported 23 passed. Full `npm test` reported 9 files / 181 tests passed. `C:\Users\josep\go\bin\actionlint.exe .github\workflows\anomaly-triage.yml` and `git diff --check` exited 0; the latter emitted only a working-tree LF-to-CRLF warning.
+- **Propagation:** pending `v1` tag movement and `archon-setup` reusable-workflow snapshot refresh after merge; callers do not change.
+
 ## 2026-07-09 - Anomaly-triage caller write permissions
 
 - **Issue/PR:** #106 / #107
