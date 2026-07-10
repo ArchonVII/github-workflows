@@ -17,7 +17,7 @@ This log records agent-visible repository changes that should be easy to audit l
 
 ## 2026-07-09 - Anomaly-triage caller write permissions
 
-- **Issue/PR:** #106 / (pending)
+- **Issue/PR:** #106 / #107
 - **Branch:** agent/codex/106-anomaly-triage-write-permissions
 - **Changed paths:** examples/anomaly-triage.yml, scripts/workflow-structure.test.mjs, .changelog/unreleased/106-anomaly-triage-write-permissions.md, docs/repo-update-log.md
 - **What changed:** The managed anomaly-triage caller now grants `contents: read`, `pull-requests: write`, and `issues: write`, which are the exact scopes its reusable workflow needs. Added a structural regression test because read-default consumers previously failed during reusable-workflow expansion before GitHub created any jobs.
