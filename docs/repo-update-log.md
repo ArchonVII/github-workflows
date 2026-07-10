@@ -17,7 +17,7 @@ This log records agent-visible repository changes that should be easy to audit l
 
 ## 2026-07-09 - Anomaly-triage documented metadata parsing
 
-- **Issue/PR:** #110 / (pending)
+- **Issue/PR:** #110 / #111
 - **Branch:** agent/codex/110-parse-anomaly-metadata
 - **Changed paths:** .github/workflows/anomaly-triage.yml, scripts/workflow-structure.test.mjs, .changelog/unreleased/110-parse-anomaly-metadata.md, docs/repo-update-log.md
 - **What changed:** The anomaly parser now accepts both the documented `**Field:** value` metadata form and the legacy `**Field**: value` form. The former previously lost severity, file, explicit relatedness, and downstream-repo fields, which a live #106 proof exposed when `Related to PR: yes` was routed as an unrelated issue.
