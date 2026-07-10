@@ -24,6 +24,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Verification:** TDD RED: `npm test -- scripts/workflow-structure.test.mjs` → 1 failed / 21 passed on the missing caller permission block. GREEN: the same command → 22 passed / 0 failed after adding the three scopes. `actionlint examples/anomaly-triage.yml` exited 0. Full `npm test` → 9 files / 180 tests / 180 passed. `git diff --check` exited 0 with working-tree LF-to-CRLF warnings only. Live consumer proof remains part of propagation.
 - **Propagation:** pending — refresh the `archon-setup` snapshot from the delivered provider source, update every opted-in ArchonVII consumer through normal updater lanes, and prove routing/idempotency in a read-default consumer PR.
 
+## 2026-07-09 - python-ci install step: fix bash parse error on empty install-command
+
+- **Issue/PR:** #108 / (pending)
+- **Branch:** agent/claude/108-python-ci-empty-install
+- **Changed paths:** .github/workflows/python-ci.yml, .changelog/unreleased/108-python-ci-empty-install.md, docs/repo-update-log.md
+- **What changed:** With `inputs.install-command` empty (the default; `repo-required-gate.yml` never forwards it), the install step rendered as `if [ -n "" ]; then` + blank line + `elif` — a bash parse error, so the step exited 2 before running anything and every consumer's `repo-required-gate / python ci` failed unconditionally. First hit by ArchonVII/sales#31 (the fleet's first python-lane consumer): https://github.com/ArchonVII/sales/actions/runs/29064652101. Fix: a `:` no-op line keeps the then-branch a valid body regardless of interpolation. `node-ci.yml` is unaffected (its equivalent branch assigns a variable); `go-ci.yml` has no such pattern.
+- **Verification:** `bash -n` on both rendered shapes (empty and non-empty install-command) parses cleanly; `npm test` (vitest) 9 files / 179 tests / 179 pass on the lane clone. Live consumer proof pending the owner-gated `@v1` retag (ArchonVII/sales#31 pins the fix SHA meanwhile and exercises the full python lane).
+- **Propagation:** pending — `@v1` retag is owner-gated; after retag, ArchonVII/sales#31 flips its temporary fix-SHA pin back to `@v1` (tracked in that PR).
+
 ## 2026-07-04 - Docs-gate lane (docs-system input) + fragment example cleanup
 
 - **Issue/PR:** #104 / (pending)
