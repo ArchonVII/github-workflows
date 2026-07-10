@@ -245,6 +245,39 @@ describe('anomaly-triage caller permission contract', () => {
   });
 });
 
+describe('anomaly-triage metadata parser contract', () => {
+  it('accepts the documented and legacy bold-field colon placement', () => {
+    const body = readWorkflow('anomaly-triage');
+    const parserLine = body
+      .split(/\r?\n/)
+      .find((line) => line.includes('const m = /^-'));
+    const regexSource = parserLine?.match(/const m = \/(.+)\/\.exec\(line\);/)?.[1];
+
+    expect(regexSource).toBeTruthy();
+    const metadataLine = new RegExp(regexSource);
+
+    const documentedFields = Object.fromEntries(
+      [
+        '- **Severity:** high',
+        '- **File:** src/example.mjs',
+        '- **Related to PR:** yes',
+        '- **Downstream repo:** ArchonVII/example',
+      ].map((line) => metadataLine.exec(line)?.slice(1)),
+    );
+
+    expect(documentedFields).toEqual({
+      Severity: 'high',
+      File: 'src/example.mjs',
+      'Related to PR': 'yes',
+      'Downstream repo': 'ArchonVII/example',
+    });
+    expect(metadataLine.exec('- **Related to PR**: yes')?.slice(1)).toEqual([
+      'Related to PR',
+      'yes',
+    ]);
+  });
+});
+
 describe('pr-policy workflow contract source', () => {
   it('uses the shared PR contract validator instead of inline body regexes', () => {
     const body = readWorkflow('pr-policy');
