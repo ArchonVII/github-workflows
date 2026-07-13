@@ -362,6 +362,40 @@ describe('context-aware parser (acceptance table)', () => {
     expect(result.ok).toBe(false);
     expect(result.errors.map((e) => e.code)).toContain('placeholder_text');
   });
+
+  // Regression: ambiguous status tokens embedded in real prose must NOT trip the
+  // gate. Before the line-anchoring fix these matched anywhere, so a Summary of
+  // "hydrology is not yet wired in" failed as placeholder_text AND empty_summary.
+  // Source: gw#112 / /page-gm 2026-07-13.
+  it('passes a Summary whose prose contains "not yet" mid-sentence', () => {
+    const body = validBody.replace(
+      '- Add strict PR contract validation before ready-for-review.',
+      '- Land the terrain pass; hydrology is not yet wired in and follows in a later PR.',
+    );
+    const result = validatePrContract(input({ body }));
+    expect(result.ok).toBe(true);
+    expect(result.errors.map((e) => e.code)).not.toContain('placeholder_text');
+    expect(result.errors.map((e) => e.code)).not.toContain('empty_summary');
+  });
+
+  it('passes prose that contains "N/A" and "TBD" mid-sentence', () => {
+    const body = validBody.replace(
+      '- Add strict PR contract validation before ready-for-review.',
+      '- The DB migration is N/A here and the exact rollout date is still TBD pending sign-off.',
+    );
+    expect(validatePrContract(input({ body })).ok).toBe(true);
+  });
+
+  // Boundary: a token that LEADS a section's whole content is still a lazy fill.
+  it('still fails a Docs / Changelog section that is only "Not yet"', () => {
+    const body = validBody.replace(
+      '- [x] README and reusable workflow examples updated for the new contract.',
+      'Not yet',
+    );
+    const result = validatePrContract(input({ body }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('placeholder_text');
+  });
 });
 
 // Substance-only contract (owner decision 2026-07-01, #99): require that a

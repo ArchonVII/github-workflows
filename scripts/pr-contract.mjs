@@ -16,7 +16,13 @@ const DEFAULT_REQUIRED_HEADINGS = [
 const TITLE_RE = /^(feat|fix|refactor|test|docs|style|chore|perf|ci|build|revert)(\([^)]+\))?: .+/;
 const ISSUE_RE = /\b(Closes|Fixes|Refs)\s+#\d+\b/i;
 // "placeholder" is valid completed prose; reject explicit unfilled markers.
-const PLACEHOLDER_RE = /\b(TODO|TBD|FIXME|FILL ME|FILL IN|REPLACE THIS|NOT YET|N\/A|NONE YET)\b|#\s*(?:___|<[^>]+>)|<set-before-merge>/i;
+// Two classes so legitimate prose is not false-positived (gw#112, /page-gm
+// 2026-07-13). STRICT markers never occur in real prose -> match anywhere.
+// Ambiguous status tokens ("not yet", "N/A", "TODO") DO occur in real sentences
+// ("hydrology is not yet wired in") -> placeholders only when they LEAD a line's
+// content (see hasLinePlaceholder), never mid-sentence.
+const STRICT_PLACEHOLDER_RE = /#\s*(?:___|<[^>]+>)|<set-before-merge>/i;
+const LINE_PLACEHOLDER_RE = /^(?:TODO|TBD|FIXME|FILL ME|FILL IN|REPLACE THIS|NOT YET|N\/A|NONE YET)\b/i;
 const CHECKED_RE = /^\s*[-*]\s+\[[xX]\]\s+(.+?)\s*$/;
 const UNCHECKED_RE = /^\s*[-*]\s+\[\s\]\s+(.+?)\s*$/;
 // Substance-only contract (owner decision 2026-07-01, #99): any non-empty
@@ -450,7 +456,31 @@ function hasSubstantiveContent(text) {
 }
 
 function hasPlaceholder(text) {
-  return PLACEHOLDER_RE.test(text || '') || hasLiteralPlaceholderFiller(text);
+  const raw = stripHtmlComments(text);
+  return STRICT_PLACEHOLDER_RE.test(raw)
+    || hasLinePlaceholder(raw)
+    || hasLiteralPlaceholderFiller(text);
+}
+
+// Ambiguous status tokens (TODO/TBD/NOT YET/N/A/...) are placeholders only when
+// they LEAD a line's content — after stripping list/checkbox markers, and also
+// after stripping a single leading `label:` prefix so an evidence field
+// (`command: TODO`) and a lazy fill (`Summary: N/A`) are still caught. The token
+// itself is NOT treated as the label, so `TODO: What changed` is still flagged.
+// Mid-sentence prose ("hydrology is not yet wired in") is never flagged.
+// Source: gw#112 / /page-gm 2026-07-13.
+function hasLinePlaceholder(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .some((line) => {
+      const base = line
+        .replace(/^\s+/, '')
+        .replace(/^[-*]\s+\[[ xX]\]\s+/, '')
+        .replace(/^[-*]\s+/, '')
+        .trim();
+      const delabeled = base.replace(/^[A-Za-z][A-Za-z -]{0,40}:\s+/, '');
+      return LINE_PLACEHOLDER_RE.test(base) || LINE_PLACEHOLDER_RE.test(delabeled);
+    });
 }
 
 function hasLiteralPlaceholderFiller(text) {
