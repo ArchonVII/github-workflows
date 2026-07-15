@@ -710,7 +710,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ fromJSON(inputs.node-versions)[0] }}
 
@@ -759,7 +759,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ fromJSON(inputs.node-versions)[0] }}
 
