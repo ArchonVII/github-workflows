@@ -113,6 +113,26 @@ describe('repo-required-gate workflow node delegation', () => {
   });
 });
 
+describe('repo-required-gate check-map policy validation (#116)', () => {
+  it('validates the consumer map with the caller-aligned provider helper', () => {
+    const body = readWorkflow('repo-required-gate');
+    const block = workflowJobBlock(body, 'policy-validation');
+
+    expect(block).toContain('uses: actions/checkout@v7');
+    expect(block).toContain('repository: ArchonVII/github-workflows');
+    expect(block).toContain('ref: ${{ inputs.workflow-library-ref }}');
+    expect(block).toContain('path: __github-workflows__');
+    expect(block).toContain(
+      'node __github-workflows__/scripts/validate-check-map.mjs .agent/check-map.yml',
+    );
+    expect(block.indexOf('name: Check out consumer repository')).toBeLessThan(
+      block.indexOf('name: Check out github-workflows for check-map validator'),
+    );
+    expect(block).not.toContain("grep -Eq '^required_gate:'");
+    expect(block).not.toContain('check_name: repo-required-gate / decision');
+  });
+});
+
 describe('repo-required-gate docs-gate lane (#104)', () => {
   it('declares the opt-in docs-system input defaulting to false', () => {
     const body = readWorkflow('repo-required-gate');
