@@ -20,6 +20,12 @@ const isIgnoredLine = (line) => {
   return trimmed === '' || trimmed.startsWith('#');
 };
 
+const isQuotedScalarStart = (value, index) => {
+  const prefix = value.slice(0, index);
+  return prefix.trim() === ''
+    || /^\s*[A-Za-z_][A-Za-z0-9_.-]*\s*:\s*$/.test(prefix);
+};
+
 const stripInlineComment = (value) => {
   let quote = null;
   let escaped = false;
@@ -49,7 +55,7 @@ const stripInlineComment = (value) => {
       continue;
     }
 
-    if (character === '"' || character === "'") {
+    if ((character === '"' || character === "'") && isQuotedScalarStart(value, index)) {
       quote = character;
       continue;
     }

@@ -58,6 +58,19 @@ required_gates:
     );
   });
 
+  it.each([
+    ['plural', "team's / gate"],
+    ['plural', '6" screen / gate'],
+    ['legacy', "team's / gate"],
+    ['legacy', '6" screen / gate'],
+  ])('accepts embedded quote characters in %s plain names: %s', (shape, name) => {
+    const declaration = shape === 'plural'
+      ? `required_gates:\n  - check_name: ${name}`
+      : `required_gate:\n  check_name: ${name}`;
+
+    expectValid(`version: 1\n${declaration}\n`, [name]);
+  });
+
   it('accepts a plural mapping whose item marker is on its own line', () => {
     expectValid(
       `version: 1
