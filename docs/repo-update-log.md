@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-07-18 - Plural required-gate check-map validation
+
+- **Issue/PR:** #116 / (pending)
+- **Branch:** agent/codex/116-plural-required-gates
+- **Changed paths:** .github/workflows/repo-required-gate.yml, scripts/validate-check-map.mjs, scripts/validate-check-map.test.mjs, scripts/workflow-structure.test.mjs, .changelog/unreleased/116-plural-required-gates.md, docs/repo-update-log.md
+- **What changed:** Replaced the policy lane's singular-only grep with a zero-dependency check-map validator loaded from the provider checkout at `inputs.workflow-library-ref`. The validator accepts canonical plural gate lists and the legacy singular mapping, allows custom check names (including valid plain names with embedded quote characters), and fails closed on missing, empty, ambiguous, duplicate, incorrectly indented, non-string, or malformed declarations.
+- **Verification:** Initial TDD RED: `npx vitest run scripts/validate-check-map.test.mjs scripts/workflow-structure.test.mjs` reported one failed suite for the missing helper and one failed structural assertion (23 tests passed). Review-repair RED runs then reported 13 failed / 47 passed for separator, indentation, duplicate-name, and non-string scalar gaps, followed by 16 failed / 66 passed for strict scalar/list subset parity. The embedded-quote review regression reported 4 failed / 58 passed before production changes. Final GREEN: the focused command reported 2 files / 86 tests passed. Full `npm test` reported 10 files / 244 tests passed. `node --check` on all touched `.mjs` files, validator CLI runs against this repository's legacy singular map and repo-template PR #187's plural map, `C:\Users\josep\go\bin\actionlint.exe .github\workflows\repo-required-gate.yml`, and `git diff --check` exited 0.
+- **Propagation:** pending owner-gated `v1` tag movement after merge; consumers pinned to `@v1` receive the validator on their next required-gate run.
+
 ## 2026-07-09 - Anomaly-triage documented metadata parsing
 
 - **Issue/PR:** #110 / #111
