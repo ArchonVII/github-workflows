@@ -13,6 +13,6 @@
     "agent:pr-body": "node scripts/agent/pr-body.mjs"
   },
   "devDependencies": {
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.11"
   }
 }
