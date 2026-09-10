@@ -621,14 +621,19 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out consumer repository
+        uses: actions/checkout@v7
+      - name: Check out github-workflows for check-map validator
+        uses: actions/checkout@v7
+        with:
+          repository: ArchonVII/github-workflows
+          ref: ${{ inputs.workflow-library-ref }}
+          path: __github-workflows__
       - name: Validate check map
         shell: bash
         run: |
           if [ -f .agent/check-map.yml ]; then
-            grep -Eq '^version: [0-9]+' .agent/check-map.yml
-            grep -Eq '^required_gate:' .agent/check-map.yml
-            grep -Eq '^[[:space:]]+check_name: repo-required-gate / decision' .agent/check-map.yml
+            node __github-workflows__/scripts/validate-check-map.mjs .agent/check-map.yml
           fi
 
   dependency-review:
