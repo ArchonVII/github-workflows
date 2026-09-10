@@ -15,6 +15,15 @@ This log records agent-visible repository changes that should be easy to audit l
 - **Propagation:** none | pending <repo/path> | completed <repo/path>
 ```
 
+## 2026-09-10 - Accept completed prose in the PR contract
+
+- **Issue/PR:** #112 / #113
+- **Branch:** agent/claude/112-pr-contract-placeholder-false-positive
+- **Changed paths:** scripts/pr-contract.mjs, scripts/pr-contract.test.mjs, .changelog/unreleased/112-placeholder-prose.md, docs/repo-update-log.md
+- **What changed:** Ambiguous filler tokens are checked at line starts; structural placeholders still fail anywhere.
+- **Verification:** `node node_modules/vitest/vitest.mjs run scripts/pr-contract.test.mjs`: 35 passed.
+- **Propagation:** pending release-tag movement and normal consumer re-vendoring.
+
 ## 2026-07-18 - Plural required-gate check-map validation
 
 - **Issue/PR:** #116 / (pending)
