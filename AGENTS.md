@@ -285,3 +285,13 @@ boundaries; full spec: `docs/agent-process/doc-sweep.md`.
   (<12h), detached HEAD, gitignored, symlink, or any ambiguity → leave + log, never force.
 - **Safety:** the sweep takes a lock and files its own claim; selective file-by-file staging
   only; deterministic secret scan before any commit; never push recovery branches.
+
+<!-- BEGIN ARCHONVII GLOBAL UPDATE: 2026-09-30-session-file-claims -->
+## File Claim Lifetime
+
+- Claims reserve files only during active editing. Release before pause, bookmark, handoff or session end, and reacquire before resumed edits.
+- Claims have a maximum 24-hour lease; renew only while working. Timestamped legacy claims expire 24 hours after their last claim or renewal; undated claims are unverified, never perpetual ownership.
+- Inspect and prune expired reservations with the repo claim tool before reporting a conflict. No owner confirmation is needed solely to release an expired reservation.
+- An open PR, retained worktree or dirty files alone do not establish a live competing writer. Coordinate before overlapping edits when a writer is demonstrably live or liveness remains unresolved.
+- Expiry never authorizes deleting, resetting, committing or overwriting the former owner's work. Artifact recovery keeps its separate conservative safety checks.
+<!-- END ARCHONVII GLOBAL UPDATE: 2026-09-30-session-file-claims -->

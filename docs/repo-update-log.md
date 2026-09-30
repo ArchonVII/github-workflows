@@ -139,3 +139,10 @@ This log records agent-visible repository changes that should be easy to audit l
 - **What changed:** Installed the ArchonVII governance baseline through `archon-setup` onboarding, merged local agent lifecycle commands into `package.json`, added tool pointer files and hooks, and documented this repo's reusable-workflow source-of-truth boundary. Also fixed `examples/minimal-ci.yml` so the no-op shell command parses under YAML/actionlint. Remaining audit drift is intentional: README.md is the workflow catalog, AGENTS.md contains this repo's source-boundary contract, docs/repo-update-log.md is this repo's operational ledger, CHANGELOG.md uses fragment-mode release notes, and `.github/workflows/actionlint.yml` is the reusable workflow body rather than the consumer caller.
 - **Verification:** `npm test` passed 122/122. `node C:\GitHub\archon-setup\bin\onboard.mjs C:\GitHub\github-workflows-38-governance-baseline --audit --json` reported 31 present / 0 missing / 5 drifted, with startup readiness complete and remaining drift adjudicated above. `C:\Program Files\Git\bin\bash.exe .githooks/scripts/install-githooks.sh`, `test-owner-maintenance.sh`, `test-checkout-role.sh`, and `bash -n .githooks/commit-msg .githooks/pre-commit .githooks/scripts/*.sh` passed. `C:\Users\josep\go\bin\actionlint.exe` passed across `.github/workflows/*.yml` and `examples/*.yml`.
 - **Propagation:** pending archon-setup snapshot refresh after merge.
+
+## 2026-09-30 - Session-scoped claims (#123)
+
+- Branch: agent/codex/123-session-claims. Paths: AGENTS.md and this log.
+- Claims reserve only active editing, release at session boundaries and expire after 24 hours.
+- Verification: managed block insertion preserves prior policy; second apply is byte-identical; git diff --check.
+- Propagation: owner-authorized rollout from repo-template#226 via archon-setup#397. No runtime change.
